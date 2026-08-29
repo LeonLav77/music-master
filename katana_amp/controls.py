@@ -508,6 +508,52 @@ def wah_wah(cycles=3, amp=None):
             sweep_wah(100, 0, steps=25, delay=0.04, amp=a)
 
 
+def rock_wah(intervals=4, low=0, high=50, seconds=2.3, bounce=True, amp=None):
+    """Rock the treadle `intervals` times, each one taking `seconds`.
+
+    "4 intervals of 0 to 50 in 2.3 seconds" is rock_wah(4, 0, 50, 2.3):
+    four sweeps low->high->low, 2.3 s each, 9.2 s in total.
+
+    With bounce=False the pedal only sweeps up and snaps back, which is
+    sharper and more rhythmic.
+
+    Step count is derived from the duration rather than taken as an
+    argument: the amp accepts roughly 40 parameter writes a second before
+    the MIDI port becomes the bottleneck and the motion turns lumpy, so
+    the rate is capped there and the step size grows for slow sweeps
+    instead of flooding the port.
+    """
+    import time
+
+    intervals = max(1, int(intervals))
+    seconds = max(0.05, float(seconds))
+    low, high = int(low), int(high)
+
+    # Per leg: half the interval when bouncing, all of it when snapping back.
+    legs = 2 if bounce else 1
+    leg_seconds = seconds / legs
+
+    # ~40 Hz ceiling, and never fewer than 2 points or it is a jump, not a sweep.
+    steps = max(2, min(int(leg_seconds * 40), 200))
+    delay = leg_seconds / steps
+
+    with _connection(amp) as a:
+        a.set_parameter("pedal_switch", 1)
+        for _ in range(intervals):
+            for i in range(steps):
+                position = round(low + (high - low) * i / (steps - 1))
+                a.set_parameter("wah_position", position)
+                time.sleep(delay)
+            if bounce:
+                for i in range(steps):
+                    position = round(high + (low - high) * i / (steps - 1))
+                    a.set_parameter("wah_position", position)
+                    time.sleep(delay)
+            else:
+                a.set_parameter("wah_position", low)
+        return low if bounce else low
+
+
 # --- Graphic EQ ------------------------------------------------------------
 #
 # Ten bands, each -24 to +24 dB. The amp stores 0-48 with 24 as flat; these

@@ -159,6 +159,15 @@ export const transport = {
     }).catch((error) => console.error("[katana]", error));
   },
 
+  /** Repeating wah gesture - N sweeps of low..high, `seconds` each.
+   *  Server-side for the same reason as sweepWah: hundreds of MIDI writes. */
+  rockWah({ intervals, low, high, seconds, bounce }) {
+    return request("/api/wah/rock", {
+      method: "POST",
+      body: JSON.stringify({ intervals, low, high, seconds, bounce }),
+    });
+  },
+
   /** Everything the amp currently reports. */
   async state() {
     return request("/api/state");

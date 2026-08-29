@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Start both halves of the control surface with one command.
+#
+#   ./run                 API on :8000, UI on :8080
+#   ./run --ui-port 9000  move the UI (the API port is fixed - see below)
+#
+# Two processes, because they are two different things: the API owns the MIDI
+# port and talks to the amp, the UI is static files with no build step. They
+# are not merged into one server on purpose - the API stays usable headless
+# (a Pi, a footswitch script, curl), and the UI stays a directory you can
+# serve with anything.
+#
+# The API port is effectively fixed at 8000: the page derives the API host
+# from its own address and appends :8000, so moving it means editing
+# web/js/transport.js too. Moving the UI port is free.
+#
+# Ctrl-C stops both. Without the trap, killing the foreground process leaves
+# the other one holding the MIDI port or :8080, and the next run fails with
+# "address already in use" or a silent amp.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+API_PORT=8000
+UI_PORT=8080
+HOST=0.0.0.0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ui-port)  UI_PORT="${2:?--ui-port needs a number}"; shift 2 ;;
+    --api-port) API_PORT="${2:?--api-port needs a number}"; shift 2 ;;
+    --host)     HOST="${2:?--host needs an address}"; shift 2 ;;
+    -h|--help)  sed -n '2,20p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+
+[ -x "$ROOT/venv/bin/python" ] || {
+  echo "no venv - run: python3 -m venv venv && ./venv/bin/pip install -r requirements.txt" >&2
+  exit 1
+}
+
+# Fail early with a clear message rather than letting one of the two die
+# half a second in, where the error scrolls past under the other's output.
+for port in "$API_PORT" "$UI_PORT"; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    exec 3<&- 3>&-
+    echo "port $port is already in use - stop what's on it first" >&2
+    exit 1
+  fi
+done
+
+pids=()
+cleanup() {
+  trap - INT TERM EXIT
+  # Negative PID = the whole process group, so uvicorn's and http.server's
+  # own children go too. They are started with setsid for that reason.
+  for pid in "${pids[@]:-}"; do
+    kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+
+echo "API   http://localhost:$API_PORT      (docs at /docs)"
+echo "UI    http://localhost:$UI_PORT"
+
+# The LAN address is the one that matters for a phone or the amp-side panel:
+# the page reaches the API by appending :8000 to its own host, so opening the
+# UI at localhost from another device would point it at that device.
+lan=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -n "$lan" ] && echo "LAN   http://$lan:$UI_PORT"
+echo
+
+setsid "$ROOT/venv/bin/python" -m server.app --host "$HOST" --port "$API_PORT" &
+pids+=($!)
+
+setsid python3 -m http.server "$UI_PORT" --bind "$HOST" -d "$ROOT/web" \
+  >/dev/null 2>&1 &
+pids+=($!)
+
+# Exit as soon as either one dies - a surface with no API behind it looks
+# like a working page that silently does nothing. `|| true` because the dead
+# process's non-zero status must not trip `set -e` before cleanup runs.
+wait -n || true
+echo >&2
+echo "one of the servers exited - stopping the other" >&2
+cleanup

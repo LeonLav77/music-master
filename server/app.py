@@ -262,6 +262,60 @@ class Sweep(BaseModel):
     delay: float = 0.04
 
 
+class Rock(BaseModel):
+    """A repeating wah gesture: `intervals` sweeps, `seconds` each."""
+
+    intervals: int = 4
+    low: int = 0
+    high: int = 50
+    seconds: float = 2.3
+    bounce: bool = True
+
+
+@app.post("/api/wah/rock")
+async def wah_rock(body: Rock = Rock()):
+    """Rock the treadle repeatedly - "4 intervals of 0 to 50 in 2.3 seconds".
+
+    Held server-side for the whole gesture, like /api/wah/sweep: this is
+    hundreds of MIDI writes and stepping it from the browser would mean an
+    HTTP round-trip each.
+
+    The lock is held for the duration, so a long gesture blocks other amp
+    writes until it finishes. That is deliberate - interleaving another
+    parameter change mid-sweep is how the amp ends up in a state neither
+    side expects.
+    """
+    if not 1 <= body.intervals <= 32:
+        raise HTTPException(422, "intervals must be 1-32")
+    if not 0 <= body.low <= 100 or not 0 <= body.high <= 100:
+        raise HTTPException(422, "low and high must be 0-100")
+    if body.low == body.high:
+        raise HTTPException(422, "low and high must differ")
+    # An upper bound on total time: the lock is held throughout, and a
+    # mistyped 600 would wedge the amp for ten minutes.
+    if not 0.05 <= body.seconds <= 30:
+        raise HTTPException(422, "seconds must be 0.05-30")
+    if body.intervals * body.seconds > 120:
+        raise HTTPException(422, "total gesture must be under 120 s")
+
+    async with _lock:
+        try:
+            await asyncio.to_thread(
+                controls.rock_wah,
+                body.intervals, body.low, body.high, body.seconds, body.bounce,
+            )
+            final = await asyncio.to_thread(_read, "wah_position")
+        except KatanaError as exc:
+            raise HTTPException(503, str(exc))
+
+    _cache["wah_position"] = final
+    _cache["pedal_switch"] = 1
+    await _broadcast({"type": "parameter", "name": "wah_position", "value": final})
+    await _broadcast({"type": "parameter", "name": "pedal_switch", "value": 1})
+    return {"position": final, "intervals": body.intervals,
+            "seconds": body.seconds, "total": round(body.intervals * body.seconds, 2)}
+
+
 @app.post("/api/wah/sweep")
 async def wah_sweep(body: Sweep = Sweep()):
     """Sweep the wah treadle. One request - the amp is driven server-side.

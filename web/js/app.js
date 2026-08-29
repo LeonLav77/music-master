@@ -4,7 +4,7 @@
 // the CDN and picks up everything registered on alpine:init.
 
 import { createKatanaStore } from "./store.js";
-import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
+import { knob, ampDial, treadle, eqPad, channelRail, wahRock } from "./components.js";
 import { transport } from "./transport.js";
 import {
   CHANNELS, FOOTSWITCHES, EQ_BANDS, labelFor,
@@ -42,6 +42,7 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("treadle", treadle);
   Alpine.data("eqPad", eqPad);
   Alpine.data("channelRail", channelRail);
+  Alpine.data("wahRock", wahRock);
 
   /** The whole desk: layout-level state only. */
   Alpine.data("desk", () => ({

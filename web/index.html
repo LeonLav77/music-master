@@ -339,20 +339,87 @@
             <button type="button" class="chip muted" style="justify-content:center" @click="sweepWah()">sweep</button>
             <button type="button" class="chip muted" style="justify-content:center" @click="openBlock = 'wah'">setup</button>
           </div>
+
+        <!-- Custom repeating sweep: N rocks of low..high, `seconds` each.
+             Inside the treadle wrap so it sits directly under the action
+             row - as a sibling the wrap's flex:1 pushed it to the riser
+             floor and left a gap. -->
+        <div x-data="wahRock">
+          <!-- Trigger and configure are separate: the gesture is the thing you
+               reach for mid-playing, so it fires on one press. The gear is
+               deliberately small - settings are a set-once affair. -->
+          <div class="rock-row">
+            <button
+              type="button"
+              class="chip rock-fire"
+              @click="run()"
+              :disabled="invalid || running || $store.katana.busy !== null"
+              :title="`run ${summary}`"
+            >
+              <span x-text="running ? 'rocking…' : 'rock'"></span>
+              <span class="rock-summary" x-text="summary"></span>
+            </button>
+            <button
+              type="button"
+              class="chip muted rock-gear"
+              @click="open = true"
+              :disabled="running || $store.katana.busy !== null"
+              aria-label="Configure the wah sweep"
+              title="Configure"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+            </button>
+          </div>
+
+          <template x-if="open">
+            <div class="overlay center" @click.self="open = false">
+              <div class="rock-panel" role="dialog" aria-modal="true" aria-label="Custom wah sweep">
+                <h2>Custom wah sweep</h2>
+                <p class="rock-sentence">
+                  <input type="number" min="1" max="32" step="1" x-model.number="intervals" aria-label="intervals" />
+                  <span>intervals of</span>
+                  <input type="number" min="0" max="100" step="1" x-model.number="low" aria-label="from" />
+                  <span>to</span>
+                  <input type="number" min="0" max="100" step="1" x-model.number="high" aria-label="to" />
+                  <span>in</span>
+                  <input type="number" min="0.05" max="30" step="0.1" x-model.number="seconds" aria-label="seconds each" />
+                  <span>seconds each</span>
+                </p>
+
+                <label class="rock-check">
+                  <input type="checkbox" x-model="bounce" />
+                  <span x-text="bounce ? 'rock down and back' : 'sweep up, snap back'"></span>
+                </label>
+
+                <p class="rock-total">
+                  total <strong x-text="total + 's'"></strong>
+                  <span class="rock-bad" x-show="invalid" x-text="invalid"></span>
+                </p>
+                <p class="rock-bad" x-show="error" x-text="error"></p>
+
+                <!-- No run button here: the panel only configures, the
+                     treadle button fires. -->
+                <div class="confirm-actions">
+                  <button type="button" class="btn" :disabled="invalid" @click="open = false">done</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
         </div>
       </div>
     </section>
   </div>
 
   <!-- ---- EQ dock: anchored bottom-right, clear of the footswitch row ---- -->
-  <div class="eq-anchor" x-data="eqPad">
+  <div class="eq-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad">
     <div class="eq-dock" :class="!expanded && 'collapsed'">
       <div class="eq-head">
         <button type="button" class="eq-toggle" @click="toggleExpanded()" :aria-expanded="expanded">
           <span class="eq-title" x-text="on ? 'EQ' : 'EQ · bypassed'"></span>
           <span class="eq-caret" x-text="expanded ? '▾' : '▸'"></span>
         </button>
-        <span style="display:flex;gap:.375rem" x-show="expanded">
+        <span class="eq-actions" x-show="expanded">
           <button type="button" class="chip" @click="$store.katana.toggle('eq_switch')" x-text="on ? 'on' : 'off'"></button>
           <button type="button" class="chip muted" @click="flat()">flat</button>
           <button type="button" class="chip muted" @click="openBlock = 'eq'">setup</button>

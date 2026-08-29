@@ -8,6 +8,7 @@ import {
   eqPath, eqHit, eqGapFill, EQ_N, EQ_RANGE,
 } from "./controls.js";
 import { EQ_BANDS, AMP_MODEL_OPTIONS } from "./schema.js";
+import { transport } from "./transport.js";
 
 const store = () => Alpine.store("katana");
 
@@ -98,9 +99,16 @@ export function treadle() {
     get min() { return store().num("wah_pedal_min"); },
     get max() { return store().num("wah_pedal_max"); },
     get on() { return store().bool("pedal_switch"); },
-    get tilt() { return 42 - this.value * 0.6; },
+    // Tilt only backwards (0deg at heel-down, never past vertical). Rotating
+    // toward the viewer scales the near edge up under perspective, which is
+    // what pushed the slab out of the riser at high values.
+    get tilt() { return 34 - this.value * 0.34; },
     get fillHeight() { return `${this.value}%`; },
-    get slabStyle() { return `transform: rotateX(${this.tilt}deg)`; },
+    get slabStyle() {
+      // transform-origin at the bottom: the pedal hinges on its heel, so the
+      // toe swings and the footprint never grows past the box.
+      return `transform: rotateX(${this.tilt}deg)`;
+    },
 
     apply(ev) {
       const r = this.$refs.slab.getBoundingClientRect();
@@ -197,6 +205,72 @@ export function eqPad() {
     },
     flat() {
       EQ_BANDS.forEach((b) => store().set(b.key, 0));
+    },
+  };
+}
+
+/** The custom wah gesture: N sweeps of low..high, `seconds` each.
+ *  Settings persist per browser - this is a per-player feel thing, and
+ *  retyping four numbers before every take would make it unusable. */
+export function wahRock() {
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem("katana.rock") || "{}"); }
+    catch { return {}; }
+  })();
+
+  return {
+    open: false,
+    running: false,
+    error: null,
+    intervals: saved.intervals ?? 4,
+    low: saved.low ?? 0,
+    high: saved.high ?? 50,
+    seconds: saved.seconds ?? 2.3,
+    bounce: saved.bounce ?? true,
+
+    get total() { return (this.intervals * this.seconds).toFixed(1); },
+    get summary() {
+      return `${this.intervals} × ${this.low}\u2192${this.high} @ ${this.seconds}s`;
+    },
+    /** Mirrors the server's guards, so a bad value is caught before the
+     *  request rather than coming back as a 422. */
+    get invalid() {
+      if (this.low === this.high) return "low and high must differ";
+      if (this.intervals < 1 || this.intervals > 32) return "1-32 intervals";
+      if (this.seconds < 0.05 || this.seconds > 30) return "0.05-30 s";
+      if (this.intervals * this.seconds > 120) return "total must be under 120 s";
+      return null;
+    },
+
+    persist() {
+      try {
+        localStorage.setItem("katana.rock", JSON.stringify({
+          intervals: this.intervals, low: this.low, high: this.high,
+          seconds: this.seconds, bounce: this.bounce,
+        }));
+      } catch {}
+    },
+
+    async run() {
+      if (this.invalid || this.running) return;
+      this.persist();
+      this.error = null;
+      this.running = true;
+      // The gesture runs for seconds and holds the amp lock; show it as busy
+      // so the surface does not look frozen and nothing else is sent.
+      try {
+        await Alpine.store("katana").runBusy(
+          `wah ${this.summary}`,
+          () => transport.rockWah({
+            intervals: this.intervals, low: this.low, high: this.high,
+            seconds: this.seconds, bounce: this.bounce,
+          }),
+        );
+      } catch (e) {
+        this.error = String(e.message ?? e);
+      } finally {
+        this.running = false;
+      }
     },
   };
 }

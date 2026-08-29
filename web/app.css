@@ -528,7 +528,10 @@ textarea,
 /* ---- treadle ---- */
 .treadle-wrap {
   display: flex; min-height: 0; min-width: 0; flex-direction: column; gap: 0.5rem;
-  perspective: 520px; perspective-origin: 50% 85%;
+  perspective: 900px; perspective-origin: 50% 100%;
+  /* The slab is a 3D-transformed child; clip it here so a projected corner
+     can never paint over the channel rail or outside the riser. */
+  overflow: hidden;
 }
 .treadle-head { display: flex; flex-shrink: 0; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
 .treadle-title { font-family: var(--font-display); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.2em; }
@@ -538,7 +541,11 @@ textarea,
 /* The slab is tilted in 3D; without its own row it projects over the label
    and the buttons and swallows their clicks. */
 .treadle-slab {
-  position: relative; z-index: 1; flex: 1; min-height: 0; max-height: 78%; touch-action: none; cursor: ns-resize;
+  position: relative; z-index: 1; flex: 1; min-height: 0;
+  touch-action: none; cursor: ns-resize;
+  /* Hinge on the heel. With the origin centred the whole slab scaled up as
+     the tilt approached zero and spilled out of its container. */
+  transform-origin: 50% 100%;
   overflow: hidden; border-radius: 4px; border: 1px solid var(--hairline);
   background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
   transform-style: preserve-3d; transition: transform 120ms ease-out;
@@ -683,15 +690,92 @@ textarea,
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---- EQ dock: collapsible, because it overlays the board on a 9" panel ---- */
-.eq-anchor { position: fixed; bottom: 0.75rem; right: 0.75rem; z-index: 50; }
+/* Collapsed: a small pill parked bottom-LEFT, clear of the treadle and its
+   buttons on the right-hand riser. */
+.eq-anchor { position: fixed; bottom: 0.75rem; left: 0.75rem; z-index: 50; }
 .eq-dock.collapsed { width: 190px; padding: 0.375rem 0.5rem; }
-/* The riser holds the treadle and its buttons at the bottom-right; the dock
-   must not sit on top of them. Reserve the strip it needs. */
-.riser { padding-bottom: 92px; }
 .eq-dock.collapsed .eq-mini { height: 26px; }
+
+/* Expanded: a centred panel, as large as the viewport comfortably allows.
+   Drawing a 10-band curve in a 300px corner box was the real complaint - the
+   pad is the control, so give it room. */
+.eq-anchor.open {
+  inset: 0; left: 0; bottom: 0;
+  display: grid; place-items: center;
+  background: oklch(0 0 0 / 55%); backdrop-filter: blur(2px);
+  padding: 1rem;
+}
+.eq-anchor.open .eq-dock {
+  width: min(900px, 92vw);
+  padding: 1rem 1.25rem;
+}
+.eq-anchor.open .eq-pad { height: min(52vh, 420px) !important; }
+.eq-anchor.open .eq-title { font-size: 0.95rem; }
+.eq-anchor.open .eq-labels { font-size: 0.7rem; margin-top: 0.5rem; }
+.eq-anchor.open .eq-labels span.hot { font-size: 0.78rem; font-weight: 700; }
+/* x-show toggles `display`, which clobbered an inline display:flex and left
+   the buttons stacking as blocks. Own the layout from here instead. */
+.eq-actions { display: flex; flex-direction: row; align-items: center; gap: 0.375rem; }
+.eq-anchor.open .eq-head { align-items: center; margin-bottom: 0.75rem; }
+.eq-anchor.open .eq-actions { gap: 0.5rem; }
+.eq-anchor.open .eq-actions .chip { padding: 0.4rem 0.75rem; font-size: 0.62rem; }
 .eq-toggle {
   display: flex; align-items: center; gap: 0.375rem;
   color: inherit; padding: 0;
 }
 .eq-caret { color: var(--muted-foreground); font-size: 0.7rem; }
 .eq-mini { height: 34px; margin-top: 0.25rem; }
+
+/* ---- custom wah sweep ---- */
+/* Trigger wide, configure small - the sizes say which one you reach for. */
+.rock-row { display: flex; gap: 0.375rem; margin-top: 0.375rem; flex-shrink: 0; }
+.rock-fire {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+  padding: 0.4rem 0.25rem;
+  border-color: color-mix(in oklab, var(--ember) 45%, transparent);
+  color: var(--ember);
+}
+.rock-fire:disabled, .rock-gear:disabled { opacity: 0.45; }
+.rock-gear {
+  flex: 0 0 auto; width: 1.9rem;
+  display: grid; place-items: center; padding: 0.25rem;
+}
+.rock-gear svg { height: 0.8rem; width: 0.8rem; }
+.rock-summary {
+  font-size: 0.46rem; letter-spacing: 0.06em;
+  color: var(--muted-foreground); text-transform: none;
+}
+.rock-panel {
+  max-width: 34rem; border-radius: 6px; border: 1px solid var(--hairline);
+  background: var(--panel); padding: 1.25rem; margin: 1rem;
+}
+.rock-panel h2 {
+  font-family: var(--font-display); text-transform: uppercase;
+  letter-spacing: 0.12em; font-size: 1rem; margin-bottom: 1rem;
+}
+/* The settings read as the sentence you would say out loud - "4 intervals
+   of 0 to 50 in 2.3 seconds" - rather than a column of labelled fields. */
+.rock-sentence {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+  font-size: 0.9rem; color: var(--muted-foreground); line-height: 2.1;
+}
+.rock-sentence input {
+  width: 4.2rem; padding: 0.3rem 0.45rem;
+  border-radius: 3px; border: 1px solid var(--hairline);
+  background: var(--background); color: var(--foreground);
+  font-family: var(--font-mono); font-size: 0.95rem; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.rock-sentence input:focus { outline: none; border-color: var(--steel); }
+.rock-check {
+  display: flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem;
+  font-size: 0.8rem; color: var(--muted-foreground); cursor: pointer;
+}
+.rock-check input { accent-color: var(--ember); width: 1rem; height: 1rem; }
+.rock-total {
+  margin-top: 0.9rem; font-family: var(--font-mono); font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+.rock-total strong { color: var(--foreground); }
+.rock-bad { color: var(--ember); font-size: 0.75rem; margin-left: 0.5rem; }
