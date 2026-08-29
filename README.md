@@ -435,25 +435,36 @@ the next channel change.
 
 ## Interface
 
-`interface/` is the React control surface (TanStack Start + Tailwind).
+`web/` is the control surface: plain HTML, hand-written CSS and ES modules
+with [Alpine](https://alpinejs.dev) for reactivity. No build step, no
+dependencies to install.
 
 Two processes, side by side:
 
 ```bash
-./run-server                      # the amp API on :8000
+./run-server                                    # the amp API on :8000
 
-cd interface
-bun install
-bun run schema                    # regenerate the schema from the Python tables
-bun run dev                       # the UI on :8080
+cd web && python3 -m http.server 8080 --bind 0.0.0.0   # the UI on :8080
 ```
 
-The interface is a TanStack Start app and serves itself — the API does not
-host it. Point it at another machine (the Pi) with `VITE_API_URL`, see
-`interface/.env.example`.
+Then open `http://localhost:8080`, or `http://<this-machine>:8080` from a
+phone on the same network. `--bind 0.0.0.0` is what makes the second work.
 
-It talks to the server through `src/lib/katana/transport.ts` and nothing
-else — changes go over the WebSocket, with HTTP as the fallback.
+The page derives the API host from the address it was loaded from, so
+opening `http://192.168.1.124:8080` talks to `http://192.168.1.124:8000`
+with no configuration. Override with `window.KATANA_API_URL` in
+`web/index.html` to point at a fixed address (the amp Pi).
+
+It talks to the server through `web/js/transport.js` and nothing else —
+changes go over the WebSocket, with HTTP as the fallback.
+
+Regenerate the parameter schema after changing `katana.py`:
+
+```bash
+./venv/bin/python scripts/generate_schema.py    # writes web/js/schema.js
+```
+
+See `web/README.md` for the file-by-file layout.
 
 While a control is being dragged the store *holds* that parameter, so an
 update arriving from the amp cannot yank it out from under a finger.

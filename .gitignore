@@ -76,8 +76,11 @@ bun-debug.log*
 # Cloned reference repos that carry their own .git directory.
 # Tracking these would create a broken gitlink, so they stay out.
 #   vendor/katana-midi-bridge -> https://github.com/snhirsch/katana-midi-bridge.git
+#
+# Anchored: web/vendor/ holds Alpine, which IS tracked - the surface must
+# work offline, so an unanchored "vendor/" silently dropped it.
 # ---------------------------------------------------------------
-vendor/
+/vendor/
 
 # ---------------------------------------------------------------
 # Editors & OS cruft

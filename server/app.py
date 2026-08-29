@@ -35,10 +35,10 @@ from katana_amp.katana import (
 ROOT = Path(__file__).resolve().parent.parent
 PATCH_DIR = ROOT / "patches"
 
-# The interface is a TanStack Start app, which builds to its own Node
-# server rather than a static bundle - so this API does not serve it.
-# Run the two side by side; the UI finds this one through VITE_API_URL.
-WEB_DIR = ROOT / "interface" / ".output" / "public"
+# The control surface in web/ is static files with no build step, served
+# separately (python3 -m http.server, nginx, whatever). This API does not
+# serve it; the page finds this server by deriving the host from its own
+# address, so no configuration is needed on a LAN.
 
 app = FastAPI(title="Katana MkII", version="1.0")
 
@@ -471,11 +471,11 @@ async def websocket(client: WebSocket):
 
 @app.get("/")
 async def index():
-    """Where to find things. The interface runs as its own server."""
+    """Where to find things. The control surface is served separately."""
     return {
         "api": "/docs",
-        "interface": "cd interface && bun run dev  (or bun run start after a build)",
-        "note": "the UI reaches this server through VITE_API_URL",
+        "interface": "cd web && python3 -m http.server 8080 --bind 0.0.0.0",
+        "note": "the page derives this server's address from its own host",
     }
 
 
