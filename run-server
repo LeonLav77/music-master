@@ -1,0 +1,3 @@
+#!/bin/sh
+# Start the Katana API server.
+exec "$(dirname "$0")/venv/bin/python" -m server.app "$@"

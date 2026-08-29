@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Katana MkII Control Surface</title>
+<link rel="icon" href="favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="fonts.css" />
+<link rel="stylesheet" href="app.css" />
+<script type="module" src="js/app.js"></script>
+<script defer src="vendor/alpine.min.js"></script>
+</head>
+
+<body>
+<div x-data="desk" x-cloak>
+
+  <!-- Slow amp operation: several seconds of MIDI where nothing visibly
+       changes and then everything changes at once. Without this the
+       surface just looks frozen. -->
+  <div class="busybar" :class="k.busy && 'show'" aria-live="polite">
+    <div class="busybar-track"><div class="busybar-fill"></div></div>
+    <template x-if="k.busy">
+      <div class="busybar-label-wrap"><span class="busybar-label" x-text="k.busy"></span></div>
+    </template>
+  </div>
+
+  <main class="scene amp-scene">
+  <div class="cabinet amp-tolex amp-tilt">
+    <span aria-hidden="true" class="trim trim-top chrome-edge"></span>
+    <span aria-hidden="true" class="trim trim-bottom chrome-edge"></span>
+
+    <!-- ---- top control plate: badge + status ---- -->
+    <section class="topbar amp-plate">
+      <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
+      <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
+      <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
+      <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
+
+      <div class="brand">
+        <span class="brand-lamp">
+          <span aria-hidden="true" class="brand-glow tube-glow tube-flicker" :class="!glowing && 'dim'"></span>
+          <span class="brand-bulb"></span>
+        </span>
+        <div style="line-height:1">
+          <h1 class="brand-name engrave">Katana</h1>
+          <span class="brand-sub engrave">MkII · 100W</span>
+        </div>
+      </div>
+
+      <div class="divider-v"></div>
+
+      <div class="status">
+        <span class="patch-name engrave">
+          <span x-text="k.channelNames[k.channel]"></span>
+          <span class="edited" x-show="k.dirty"> · edited</span>
+        </span>
+
+        <div class="status-actions">
+          <!-- Whether the amp is actually reachable. Without this a
+               disconnected surface looks identical to a working one. -->
+          <span class="conn" :title="'Amp ' + k.connection">
+            <span aria-hidden="true" class="dot" :class="'dot-' + k.connection"></span>
+            <span class="conn-label engrave" x-text="k.connection === 'open' ? 'live' : k.connection === 'closed' ? 'offline' : 'connecting'"></span>
+          </span>
+
+          <span class="sync-label engrave" x-text="k.syncLabel"></span>
+
+          <button type="button" class="chip" @click="resync()">
+            <svg :class="k.syncing && 'spin'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+            resync
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- channel rail ---- -->
+    <div style="flex-shrink:0" x-data="channelRail">
+      <div class="rail">
+        <template x-for="c in channels" :key="c.id">
+          <button
+            type="button"
+            class="rail-btn"
+            :class="[k.channel === c.id && 'active', c.id === 'panel' && 'panel']"
+            :disabled="k.busy !== null"
+            @click="k.selectChannel(c.id)"
+            @pointerdown="holdStart(c.id)"
+            @pointerup="holdEnd()"
+            @pointerleave="holdEnd()"
+          >
+            <span class="rail-bank" x-text="c.id === 'panel' ? 'panel' : c.bank + c.id.slice(1)"></span>
+            <span class="rail-name" x-text="k.channelNames[c.id]"></span>
+          </button>
+        </template>
+      </div>
+
+      <!-- Press-and-hold overwrites a stored patch. Permanently destructive,
+           so it always asks first. -->
+      <template x-if="pending">
+        <div class="overlay center" @click.self="pending = null">
+          <div class="confirm" role="alertdialog" aria-modal="true">
+            <h2>Overwrite <span x-text="k.channelNames[pending]"></span>?</h2>
+            <p>This writes the live panel sound into the stored slot. The sound currently saved there is lost permanently.</p>
+            <div class="confirm-actions">
+              <button type="button" class="btn" @click="pending = null">Cancel</button>
+              <button type="button" class="btn btn-danger" @click="confirm()">Overwrite</button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ---- cabinet body ---- -->
+    <section class="body-grid">
+
+      <!-- amp control plate -->
+      <div class="plate amp-plate">
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
+
+        <!-- amp model selector -->
+        <div class="ampdial" x-data="ampDial(180)">
+          <div
+            class="ampdial-face"
+            role="slider"
+            aria-label="Amp model"
+            :aria-valuenow="value"
+            :aria-valuetext="name"
+            tabindex="0"
+            :style="`width:${size}px;height:${size}px`"
+            @pointerdown="drag.down($event)"
+            @pointermove="drag.move($event)"
+            @pointerup="drag.up($event)"
+            @pointercancel="drag.up($event)"
+            @keydown="drag.key($event)"
+          >
+            <div class="ampdial-ring" aria-hidden="true"></div>
+            <template x-for="o in orbit" :key="o.label">
+              <span class="ampdial-orbit" :style="orbitStyle(o)" x-text="o.label"></span>
+            </template>
+            <svg viewBox="0 0 100 100" style="width:100%;height:100%">
+              <defs>
+                <radialGradient id="ampcap" cx="32%" cy="25%">
+                  <stop offset="0" stop-color="var(--metal-light)" />
+                  <stop offset="0.28" stop-color="var(--panel-raised)" />
+                  <stop offset="0.72" stop-color="var(--cap)" />
+                  <stop offset="1" stop-color="var(--metal-dark)" />
+                </radialGradient>
+              </defs>
+              <circle cx="50" cy="50" r="33" fill="url(#ampcap)" class="stroke-track" stroke-width="1.5" />
+              <circle cx="50" cy="50" r="26" class="fill-metal-dark" opacity="0.55" />
+              <g :transform="`rotate(${pointerAngle} 50 50)`">
+                <line x1="50" y1="20" x2="50" y2="34" class="stroke-ember" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </svg>
+          </div>
+          <span class="ampdial-name" x-text="name"></span>
+        </div>
+
+        <!-- amp knobs -->
+        <div class="knob-grid">
+          <template x-for="kn in ampKnobs" :key="kn.key">
+            <div x-data="knob(kn.key, kn.label, { accent: kn.accent, size: 'md' })">
+              <div class="knob">
+                <div
+                  class="knob-dial"
+                  role="slider"
+                  :aria-label="label"
+                  :aria-valuenow="value"
+                  :aria-valuemin="min"
+                  :aria-valuemax="max"
+                  tabindex="0"
+                  :style="`width:min(${sizePx}, 100%)`"
+                  @pointerdown="drag.down($event)"
+                  @pointermove="drag.move($event)"
+                  @pointerup="drag.up($event)"
+                  @pointercancel="drag.up($event)"
+                  @keydown="drag.key($event)"
+                >
+                  <svg viewBox="0 0 100 100" style="width:100%;height:100%;overflow:visible">
+                    <defs>
+                      <radialGradient :id="capId" cx="32%" cy="25%">
+                        <stop offset="0" stop-color="var(--metal-light)" />
+                        <stop offset="0.28" stop-color="var(--panel-raised)" />
+                        <stop offset="0.72" stop-color="var(--cap)" />
+                        <stop offset="1" stop-color="var(--metal-dark)" />
+                      </radialGradient>
+                    </defs>
+                    <path :d="trackPath" class="stroke-track" fill="none" stroke-width="7" stroke-linecap="round" />
+                    <path :d="valuePath" fill="none" stroke-width="7" stroke-linecap="round" :class="accent === 'ember' ? 'stroke-ember' : 'stroke-steel'" />
+                    <ellipse cx="50" cy="62" rx="36" ry="31" class="fill-metal-dark" opacity="0.9" />
+                    <ellipse cx="50" cy="58" rx="34" ry="30" :fill="`url(#${capId})`" />
+                    <ellipse cx="50" cy="48" rx="31" ry="30" class="fill-metal-dark" />
+                    <circle cx="50" cy="48" r="30" :fill="`url(#${capId})`" stroke="color-mix(in oklab, var(--metal-light) 30%, transparent)" stroke-width="1.5" />
+                    <ellipse cx="41" cy="33" rx="15" ry="8" fill="oklch(1 0 0 / 14%)" transform="rotate(-22 41 33)" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(0 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(15 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(30 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(45 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(60 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(75 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(90 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(105 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(120 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(135 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(150 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(165 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(180 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(195 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(210 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(225 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(240 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(255 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(270 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(285 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(300 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(315 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(330 50 48)" class="tick" />
+                    <line x1="50" y1="17" x2="50" y2="22" transform="rotate(345 50 48)" class="tick" />
+                    <g :transform="`rotate(${angle} 50 48)`">
+                      <line x1="50" y1="21" x2="50" y2="41" stroke-width="4.5" stroke-linecap="round" stroke="oklch(0 0 0 / 60%)" transform="translate(0 1.5)" />
+                      <line x1="50" y1="21" x2="50" y2="41" stroke-width="4" stroke-linecap="round" :class="accent === 'ember' ? 'stroke-ember' : 'stroke-steel'" />
+                    </g>
+                  </svg>
+                  <span class="knob-readout" x-text="readout"></span>
+                </div>
+                <span class="knob-label" x-text="label"></span>
+              </div>
+            </div>
+          </template>
+
+          <!-- The amp never reports physical knob turns, so this one is read-only. -->
+          <div x-data="knob('knob_volume', 'Knob Vol', { size: 'md', disabled: true })">
+            <div class="knob">
+              <div class="knob-dial static disabled" :style="`width:min(${sizePx}, 100%)`">
+                <svg viewBox="0 0 100 100" style="width:100%;height:100%;overflow:visible">
+                  <defs>
+                    <radialGradient :id="capId" cx="32%" cy="25%">
+                      <stop offset="0" stop-color="var(--metal-light)" />
+                      <stop offset="0.28" stop-color="var(--panel-raised)" />
+                      <stop offset="0.72" stop-color="var(--cap)" />
+                      <stop offset="1" stop-color="var(--metal-dark)" />
+                    </radialGradient>
+                  </defs>
+                  <path :d="trackPath" class="stroke-track" fill="none" stroke-width="7" stroke-linecap="round" />
+                  <path :d="valuePath" fill="none" stroke-width="7" stroke-linecap="round" class="stroke-steel" />
+                  <ellipse cx="50" cy="62" rx="36" ry="31" class="fill-metal-dark" opacity="0.9" />
+                  <ellipse cx="50" cy="58" rx="34" ry="30" :fill="`url(#${capId})`" />
+                  <ellipse cx="50" cy="48" rx="31" ry="30" class="fill-metal-dark" />
+                  <circle cx="50" cy="48" r="30" :fill="`url(#${capId})`" stroke="color-mix(in oklab, var(--metal-light) 30%, transparent)" stroke-width="1.5" />
+                  <g :transform="`rotate(${angle} 50 48)`">
+                    <line x1="50" y1="21" x2="50" y2="41" stroke-width="4" stroke-linecap="round" class="stroke-steel" />
+                  </g>
+                </svg>
+                <span class="knob-readout" x-text="readout"></span>
+              </div>
+              <span class="knob-label" x-text="label"></span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="k.bool('bright') && 'on'"
+            :aria-pressed="k.bool('bright')"
+            @click="k.toggle('bright')"
+          >bright</button>
+        </div>
+      </div>
+
+      <!-- pedalboard -->
+      <div class="pedalboard amp-grille">
+        <div class="stomp-grid">
+          <template x-for="b in blocks" :key="b.id">
+            <div class="stomp" :class="[k.bool(b.sw) && 'on', tileColor(b.label)]">
+              <span class="stomp-sheen" aria-hidden="true"></span>
+              <button type="button" class="stomp-face" :aria-pressed="k.bool(b.sw)" @click="k.toggle(b.sw)">
+                <span class="stomp-row">
+                  <span class="stomp-name" x-text="b.label"></span>
+                  <span style="position:relative;display:flex;height:1rem;width:1rem;align-items:center;justify-content:center">
+                    <span class="led" :class="['led-' + (b.led ? k.led(b.led) : 'off'), k.bool(b.sw) && b.led && k.led(b.led) !== 'off' && 'signal-breathe']"></span>
+                  </span>
+                </span>
+                <span class="stomp-sub" x-text="b.sub || (k.bool(b.sw) ? 'engaged' : 'bypassed')"></span>
+                <span class="stomp-bar"></span>
+              </button>
+              <button type="button" class="stomp-gear" :aria-label="b.label + ' settings'" @click="openBlock = b.id">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <div class="footswitches">
+          <template x-for="fs in footswitches" :key="fs.cc">
+            <button
+              type="button"
+              class="footswitch"
+              :class="fs.block && k.bool(fs.block) && 'on'"
+              :title="`${fs.label} — CC${fs.cc}`"
+              @click="pressFootswitch(fs)"
+            ><span x-text="fs.label"></span></button>
+          </template>
+        </div>
+      </div>
+
+      <!-- wah riser -->
+      <div class="riser amp-tolex">
+        <span aria-hidden="true" class="trim trim-top chrome-edge" style="left:.5rem;right:.5rem;height:2px"></span>
+        <div class="treadle-wrap" style="flex:1" x-data="treadle">
+          <div class="treadle-head">
+            <span class="treadle-title">Wah</span>
+            <span class="treadle-range" x-text="`${min}–${max}`"></span>
+          </div>
+          <div
+            class="treadle-slab"
+            :class="on && 'on'"
+            x-ref="slab"
+            role="slider"
+            aria-label="Wah treadle position"
+            :aria-valuenow="value"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            tabindex="0"
+            :style="slabStyle"
+            @pointerdown="down($event)"
+            @pointermove="move($event)"
+            @pointerup="up($event)"
+            @pointercancel="up($event)"
+            @keydown="key($event)"
+          >
+            <div class="treadle-fill" :style="`height:${fillHeight}`"></div>
+            <div class="treadle-tread"></div>
+            <span class="treadle-value" x-text="value"></span>
+          </div>
+          <div class="treadle-actions">
+            <button type="button" class="chip" style="justify-content:center" @click="$store.katana.setWah(!on)" x-text="on ? 'wah on' : 'wah off'"></button>
+            <button type="button" class="chip muted" style="justify-content:center" @click="sweepWah()">sweep</button>
+            <button type="button" class="chip muted" style="justify-content:center" @click="openBlock = 'wah'">setup</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ---- EQ dock: anchored bottom-right, clear of the footswitch row ---- -->
+  <div class="eq-anchor" x-data="eqPad">
+    <div class="eq-dock" :class="!expanded && 'collapsed'">
+      <div class="eq-head">
+        <button type="button" class="eq-toggle" @click="toggleExpanded()" :aria-expanded="expanded">
+          <span class="eq-title" x-text="on ? 'EQ' : 'EQ · bypassed'"></span>
+          <span class="eq-caret" x-text="expanded ? '▾' : '▸'"></span>
+        </button>
+        <span style="display:flex;gap:.375rem" x-show="expanded">
+          <button type="button" class="chip" @click="$store.katana.toggle('eq_switch')" x-text="on ? 'on' : 'off'"></button>
+          <button type="button" class="chip muted" @click="flat()">flat</button>
+          <button type="button" class="chip muted" @click="openBlock = 'eq'">setup</button>
+        </span>
+      </div>
+
+      <!-- Draw-anywhere: drag across the pad and the band values follow the
+           finger, the numbers are derived instead of typed in. -->
+      <div x-show="expanded">
+      <div
+        class="eq-pad"
+        :class="dragging && 'dragging'"
+        x-ref="pad"
+        role="application"
+        aria-label="Graphic EQ curve — drag to shape"
+        style="height:150px"
+        @pointerdown="down($event)"
+        @pointermove="move($event)"
+        @pointerup="up($event)"
+        @pointercancel="up($event)"
+      >
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%">
+          <line x1="0" y1="50" x2="100" y2="50" class="stroke-hairline" stroke-width="0.6" />
+          <path :d="fill" :class="on ? 'fill-steel-soft' : 'fill-muted-soft'" />
+          <path :d="curve" fill="none" stroke-width="1.6" vector-effect="non-scaling-stroke" :class="on ? 'stroke-steel' : 'stroke-steel-dim'" />
+        </svg>
+      </div>
+      <div class="eq-labels">
+        <template x-for="(b, i) in bands" :key="b.key">
+          <span :class="hover === i && 'hot'" x-text="hover === i ? $store.katana.num(b.key) : b.label"></span>
+        </template>
+      </div>
+      </div>
+
+      <!-- collapsed: the curve alone, still readable at a glance -->
+      <div class="eq-mini" x-show="!expanded">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%">
+          <line x1="0" y1="50" x2="100" y2="50" class="stroke-hairline" stroke-width="0.6" />
+          <path :d="curve" fill="none" stroke-width="1.6" vector-effect="non-scaling-stroke" :class="on ? 'stroke-steel' : 'stroke-steel-dim'" />
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- block editor sheet ---- -->
+  <template x-if="openBlock">
+    <div class="overlay" @click.self="openBlock = null">
+      <div class="sheet" role="dialog" aria-modal="true">
+        <div class="sheet-inner">
+          <h2 class="sheet-title" x-text="titles[openBlock]"></h2>
+
+          <!-- effect chooser, for the two FX slots -->
+          <template x-if="editor && editor.fxSlot">
+            <div class="field">
+              <span class="field-label">effect</span>
+              <div class="segmented">
+                <template x-for="f in editor.fxSlot.options" :key="f.value">
+                  <button
+                    type="button" class="seg"
+                    :class="f.value === editor.fxSlot.current && 'active'"
+                    @click="k.set(editor.fxSlot.typeKey, f.value)"
+                    x-text="f.label"
+                  ></button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- enum pickers: flat, always-visible rows instead of dropdowns -->
+          <template x-for="p in (editor ? editor.enums : [])" :key="p.key">
+            <div class="field">
+              <span class="field-label" x-text="p.label"></span>
+              <div class="segmented">
+                <template x-for="o in p.options" :key="o.value">
+                  <button
+                    type="button" class="seg"
+                    :class="o.value === k.num(p.key) && 'active'"
+                    @click="k.set(p.key, o.value)"
+                    x-text="o.label"
+                  ></button>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="editor && editor.note">
+            <p style="border:1px dashed var(--hairline);border-radius:3px;background:var(--panel);padding:1rem .75rem;font-family:var(--font-mono);font-size:.68rem;color:var(--muted-foreground)" x-text="editor.note"></p>
+          </template>
+
+          <!-- the block's own knobs -->
+          <div class="knob-row">
+            <template x-for="p in (editor ? editor.knobs : [])" :key="p.key">
+              <div x-data="knob(p.key, p.label, { size: 'sm', min: p.min, max: p.max, unit: p.unit })">
+                <div class="knob">
+                  <div
+                    class="knob-dial"
+                    role="slider"
+                    :aria-label="label"
+                    :aria-valuenow="value"
+                    :aria-valuemin="min"
+                    :aria-valuemax="max"
+                    tabindex="0"
+                    :style="`width:min(${sizePx}, 100%)`"
+                    @pointerdown="drag.down($event)"
+                    @pointermove="drag.move($event)"
+                    @pointerup="drag.up($event)"
+                    @pointercancel="drag.up($event)"
+                    @keydown="drag.key($event)"
+                  >
+                    <svg viewBox="0 0 100 100" style="width:100%;height:100%;overflow:visible">
+                      <defs>
+                        <radialGradient :id="capId" cx="32%" cy="25%">
+                          <stop offset="0" stop-color="var(--metal-light)" />
+                          <stop offset="0.28" stop-color="var(--panel-raised)" />
+                          <stop offset="0.72" stop-color="var(--cap)" />
+                          <stop offset="1" stop-color="var(--metal-dark)" />
+                        </radialGradient>
+                      </defs>
+                      <path :d="trackPath" class="stroke-track" fill="none" stroke-width="7" stroke-linecap="round" />
+                      <path :d="valuePath" fill="none" stroke-width="7" stroke-linecap="round" class="stroke-steel" />
+                      <ellipse cx="50" cy="58" rx="34" ry="30" :fill="`url(#${capId})`" />
+                      <ellipse cx="50" cy="48" rx="31" ry="30" class="fill-metal-dark" />
+                      <circle cx="50" cy="48" r="30" :fill="`url(#${capId})`" stroke="color-mix(in oklab, var(--metal-light) 30%, transparent)" stroke-width="1.5" />
+                      <g :transform="`rotate(${angle} 50 48)`">
+                        <line x1="50" y1="21" x2="50" y2="41" stroke-width="4" stroke-linecap="round" class="stroke-steel" />
+                      </g>
+                    </svg>
+                    <span class="knob-readout" x-text="readout"></span>
+                  </div>
+                  <span class="knob-label" x-text="label"></span>
+                </div>
+              </div>
+            </template>
+
+            <template x-for="p in (editor ? editor.toggles : [])" :key="p.key">
+              <button
+                type="button" class="toggle-btn"
+                :class="k.bool(p.key) && 'on'"
+                :aria-pressed="k.bool(p.key)"
+                @click="k.toggle(p.key)"
+                x-text="p.label"
+              ></button>
+            </template>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-top:1.5rem">
+            <button type="button" class="btn" @click="openBlock = null">close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  </main>
+</div>
+</body>
+</html>

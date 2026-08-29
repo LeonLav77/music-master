@@ -1,0 +1,697 @@
+/*
+ * Katana MkII control surface design system.
+ * Dark graphite hardware, cold steel accent, ember accent.
+ * All colors are oklch tokens - never hardcode colors in the markup.
+ *
+ * Hand-written CSS: no Tailwind, no build step. The token block and the
+ * material classes below are carried over unchanged from the React build,
+ * so the surface looks identical; only the utility layer is new.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+
+:root {
+  --font-display: "Sora", system-ui, sans-serif;
+  --font-sans: "Manrope", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+:root {
+  --radius: 4px;
+
+  --background: oklch(0.105 0.01 260);
+  --foreground: oklch(0.93 0.005 260);
+  --card: oklch(0.19 0.007 260);
+  --card-foreground: oklch(0.93 0.005 260);
+  --popover: oklch(0.19 0.007 260);
+  --popover-foreground: oklch(0.93 0.005 260);
+  --primary: oklch(0.82 0.075 215);
+  --primary-foreground: oklch(0.16 0.01 260);
+  --secondary: oklch(0.25 0.008 260);
+  --secondary-foreground: oklch(0.93 0.005 260);
+  --muted: oklch(0.24 0.008 260);
+  --muted-foreground: oklch(0.63 0.012 260);
+  --accent: oklch(0.28 0.01 260);
+  --accent-foreground: oklch(0.93 0.005 260);
+  --destructive: oklch(0.6 0.2 27);
+  --destructive-foreground: oklch(0.97 0.005 260);
+  --border: oklch(0.28 0.008 260);
+  --input: oklch(0.28 0.008 260);
+  --ring: oklch(0.82 0.075 215);
+
+  --panel: oklch(0.16 0.012 260);
+  --panel-raised: oklch(0.24 0.015 255);
+  --cap: oklch(0.17 0.007 260);
+  --hairline: oklch(0.31 0.008 260);
+  --track: oklch(0.28 0.008 260);
+  --steel: oklch(0.84 0.08 214);
+  --steel-foreground: oklch(0.16 0.01 260);
+  --ember: oklch(0.66 0.19 38);
+  --ember-foreground: oklch(0.15 0.01 260);
+  --led-green: oklch(0.78 0.19 145);
+  --led-red: oklch(0.62 0.23 27);
+  --led-yellow: oklch(0.85 0.17 90);
+  --signal-cyan: oklch(0.82 0.16 205);
+  --signal-lime: oklch(0.86 0.2 125);
+  --signal-coral: oklch(0.69 0.23 28);
+  --signal-violet: oklch(0.69 0.21 315);
+  --metal-light: oklch(0.77 0.015 240);
+  --metal-dark: oklch(0.13 0.012 250);
+}
+
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse at 18% 0%, color-mix(in oklab, var(--signal-cyan) 9%, transparent), transparent 38%),
+    radial-gradient(ellipse at 82% 100%, color-mix(in oklab, var(--signal-coral) 8%, transparent), transparent 42%),
+    repeating-linear-gradient(0deg, oklch(1 0 0 / 1.6%) 0px, oklch(1 0 0 / 1.6%) 1px, transparent 1px, transparent 3px);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+svg { display: block; }
+
+/* Alpine: hide un-initialised markup so the raw template never flashes. */
+[x-cloak] { display: none !important; }
+
+  .rack-shell {
+    background: linear-gradient(145deg, var(--metal-light), var(--panel-raised) 8%, var(--metal-dark) 30%, var(--panel) 72%, var(--metal-dark));
+    box-shadow: 0 24px 55px oklch(0 0 0 / 72%), inset 0 1px 0 oklch(1 0 0 / 20%), inset 0 -2px 0 oklch(0 0 0 / 80%);
+  }
+
+  .rack-face {
+    background-image: linear-gradient(180deg, oklch(0.79 0.012 240), oklch(0.54 0.014 245) 52%, oklch(0.38 0.012 250));
+    box-shadow: inset 0 2px 6px oklch(1 0 0 / 30%), inset 0 -8px 16px oklch(0 0 0 / 32%);
+  }
+
+  .pedal-stage {
+    background-image:
+      linear-gradient(115deg, transparent 0 14%, oklch(1 0 0 / 3%) 14% 15%, transparent 15% 48%, oklch(0 0 0 / 18%) 48% 49%, transparent 49%),
+      linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 10%), inset 0 -18px 30px oklch(0 0 0 / 38%);
+  }
+
+  .hardware-screw {
+    background: radial-gradient(circle at 35% 30%, var(--metal-light), var(--metal-dark) 68%);
+    box-shadow: 0 2px 3px oklch(0 0 0 / 70%);
+  }
+
+  /* ---- physical amplifier chassis ---- */
+
+  .amp-scene {
+    perspective: 2000px;
+    perspective-origin: 50% 8%;
+  }
+
+  /* A 3D tilt on the whole cabinet looks good but breaks hit testing:
+     the browser paints elements at the projected position and tests
+     clicks against it too, so controls near the bottom of the screen
+     stop matching where they appear. Keep the look flat and let the
+     panel materials carry the depth. */
+  .amp-tilt {
+    transform: none;
+  }
+
+  /* black tolex vinyl covering */
+  .amp-tolex {
+    background-color: oklch(0.13 0.006 265);
+    background-image:
+      repeating-linear-gradient(58deg, oklch(1 0 0 / 4%) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(-58deg, oklch(0 0 0 / 45%) 0 1px, transparent 1px 5px),
+      radial-gradient(ellipse at 50% -20%, oklch(1 0 0 / 7%), transparent 60%);
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 10%), inset 0 -22px 40px oklch(0 0 0 / 60%), 0 34px 70px oklch(0 0 0 / 80%);
+  }
+
+  /* woven speaker grille cloth */
+  .amp-grille {
+    background-color: oklch(0.17 0.008 60);
+    background-image:
+      repeating-linear-gradient(90deg, oklch(0.42 0.03 70 / 40%) 0 1px, transparent 1px 4px),
+      repeating-linear-gradient(0deg, oklch(0.34 0.03 70 / 34%) 0 1px, transparent 1px 4px),
+      radial-gradient(ellipse at 50% 40%, oklch(0.5 0.05 70 / 18%), transparent 70%);
+    box-shadow: inset 0 0 40px oklch(0 0 0 / 80%), inset 0 2px 0 oklch(0 0 0 / 90%);
+  }
+
+  /* brushed aluminium control plate */
+  .amp-plate {
+    background-color: oklch(0.28 0.008 250);
+    background-image:
+      repeating-linear-gradient(90deg, oklch(1 0 0 / 5%) 0 1px, transparent 1px 3px),
+      linear-gradient(178deg, oklch(0.52 0.012 245), oklch(0.3 0.01 250) 26%, oklch(0.2 0.008 255) 62%, oklch(0.28 0.01 250));
+    box-shadow:
+      inset 0 2px 0 oklch(1 0 0 / 32%),
+      inset 0 -3px 0 oklch(0 0 0 / 85%),
+      inset 0 -26px 44px oklch(0 0 0 / 45%),
+      0 18px 34px oklch(0 0 0 / 70%);
+  }
+
+  /* engraved silkscreen text on metal */
+  .engrave {
+    color: oklch(0.86 0.008 250 / 78%);
+    text-shadow: 0 1px 0 oklch(1 0 0 / 22%), 0 -1px 1px oklch(0 0 0 / 85%);
+  }
+
+  /* chrome trim edge */
+  .chrome-edge {
+    background: linear-gradient(180deg, oklch(0.95 0.005 250), oklch(0.55 0.008 250) 42%, oklch(0.22 0.008 255) 55%, oklch(0.78 0.008 250));
+    box-shadow: 0 2px 6px oklch(0 0 0 / 75%);
+  }
+
+  /* valve warmth spilling out of the cabinet */
+  .tube-glow {
+    background: radial-gradient(circle, color-mix(in oklab, var(--ember) 65%, transparent), transparent 68%);
+    filter: blur(10px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .signal-breathe { animation: signal-breathe 2.2s ease-in-out infinite; }
+    .tube-flicker { animation: tube-flicker 5.5s ease-in-out infinite; }
+  }
+
+
+@keyframes tube-flicker {
+  0%, 100% { opacity: 0.55; }
+  38% { opacity: 0.9; }
+  52% { opacity: 0.45; }
+  71% { opacity: 0.8; }
+}
+
+
+@keyframes signal-breathe {
+  50% { filter: brightness(1.35); }
+}
+
+/* Indeterminate progress for slow amp operations - see BusyBar. */
+@keyframes busy-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* This is a control surface, not a document. Dragging a knob or
+   double-tapping a button should never select text, and on a touchscreen a
+   long press should not raise the selection callout. Inputs and anything
+   marked data-selectable stay selectable. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ==========================================================================
+   Layout for the 9-inch landscape panel.
+   Tailwind's utility classes are gone; these are the specific pieces the
+   surface actually used, named for what they are.
+   ========================================================================== */
+
+.scene {
+  perspective: 2000px;
+  perspective-origin: 50% 8%;
+  min-height: 100vh;
+  width: 100%;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+@media (orientation: landscape) {
+  .scene { height: 100vh; overflow: hidden; }
+}
+
+.cabinet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: calc(100vh - 1rem);
+  border-radius: 10px;
+  padding: 0.5rem;
+}
+@media (orientation: landscape) {
+  .cabinet { height: 100%; min-height: 0; }
+}
+
+.trim { position: absolute; left: 0.75rem; right: 0.75rem; height: 3px; pointer-events: none; }
+.trim-top { top: 0; border-radius: 0 0 3px 3px; }
+.trim-bottom { bottom: 0; border-radius: 3px 3px 0 0; }
+
+.screw {
+  position: absolute;
+  height: 0.625rem;
+  width: 0.625rem;
+  border-radius: 9999px;
+}
+.screw::after {
+  content: "";
+  position: absolute;
+  left: 2px; right: 2px; top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+  background: var(--metal-dark);
+}
+
+/* ---- top plate ---- */
+.topbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+}
+.brand { display: flex; align-items: center; gap: 0.75rem; }
+.brand-lamp { position: relative; display: grid; place-items: center; height: 1.5rem; width: 1.5rem; }
+.brand-glow { position: absolute; inset: -8px; }
+.brand-glow.dim { opacity: 0.4; }
+.brand-bulb {
+  position: relative; height: 0.875rem; width: 0.875rem; border-radius: 9999px;
+  border: 1px solid var(--metal-dark); background: var(--ember);
+  box-shadow: 0 0 12px var(--ember);
+}
+.brand-name { font-family: var(--font-display); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.3em; }
+.brand-sub { font-family: var(--font-mono); font-size: 0.5rem; text-transform: uppercase; letter-spacing: 0.4em; }
+.divider-v { height: 2.25rem; width: 1px; background: color-mix(in oklab, var(--metal-dark) 80%, transparent); }
+
+.status { display: flex; min-width: 0; align-items: center; gap: 0.75rem; }
+.patch-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.2em;
+}
+.edited { color: var(--ember); }
+.status-actions { margin-left: auto; display: flex; flex-shrink: 0; align-items: center; gap: 0.5rem; }
+
+.chip {
+  display: flex; align-items: center; gap: 0.375rem;
+  border-radius: 3px; border: 1px solid var(--metal-dark);
+  background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+  padding: 0.375rem 0.625rem;
+  font-family: var(--font-mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--steel);
+  box-shadow: 0 2px 0 oklch(0 0 0 / 70%);
+  text-decoration: none;
+}
+.chip:active { transform: translateY(1px); box-shadow: none; }
+.chip.muted { color: color-mix(in oklab, var(--foreground) 70%, transparent); }
+.chip svg { height: 0.75rem; width: 0.75rem; }
+
+.dot { height: 0.375rem; width: 0.375rem; border-radius: 9999px; }
+.dot-open { background: var(--steel); box-shadow: var(--shadow-glow-steel, 0 0 12px var(--steel)); }
+.dot-connecting { background: color-mix(in oklab, var(--foreground) 40%, transparent); animation: pulse 2s ease-in-out infinite; }
+.dot-closed { background: var(--ember); box-shadow: 0 0 12px var(--ember); }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+.conn { display: flex; flex-shrink: 0; align-items: center; gap: 0.375rem; }
+.conn-label, .sync-label {
+  font-family: var(--font-mono); font-size: 0.52rem;
+  text-transform: uppercase; letter-spacing: 0.16em;
+}
+
+/* ---- body grid ---- */
+.body-grid { display: grid; min-height: 0; flex: 1; grid-template-columns: 1fr; gap: 0.5rem; }
+@media (min-width: 1000px) {
+  .body-grid { grid-template-columns: minmax(0, 1.75fr) minmax(0, 1.15fr) 212px; }
+}
+
+.plate {
+  position: relative; overflow: hidden; display: grid; min-height: 0; min-width: 0;
+  grid-template-columns: 1fr; align-items: center; justify-items: center;
+  gap: 1rem; border-radius: 6px; padding: 0.75rem;
+}
+@media (min-width: 720px) {
+  .plate { grid-template-columns: auto minmax(0, 1fr); }
+}
+.knob-grid {
+  display: grid; min-width: 0; width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start; justify-items: center; column-gap: 0.5rem; row-gap: 0.25rem;
+}
+.knob-grid > * { min-width: 0; max-width: 100%; }
+
+.pedalboard {
+  position: relative; display: flex; min-height: 0; min-width: 0;
+  flex-direction: column; gap: 0.5rem; border-radius: 6px; padding: 0.5rem;
+}
+.stomp-grid {
+  display: grid; min-height: 0; flex: 1;
+  grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 1fr); gap: 0.5rem;
+}
+
+.riser {
+  position: relative; display: flex; min-height: 280px;
+  flex-direction: column; border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--metal-dark) 60%, transparent);
+  padding: 0.5rem;
+}
+@media (min-width: 1000px) { .riser { min-height: 0; } }
+
+/* ---- knob ---- */
+.knob { display: flex; min-width: 0; max-width: 100%; flex-direction: column; align-items: center; gap: 0.375rem; }
+.knob-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knob-dial {
+  position: relative; touch-action: none; outline: none;
+  max-width: 100%; height: auto; aspect-ratio: 1 / 1;
+  filter: drop-shadow(0 8px 7px oklch(0 0 0 / 55%));
+  cursor: ns-resize;
+}
+.knob-dial:focus-visible { box-shadow: 0 0 0 2px var(--ring); border-radius: 9999px; }
+.knob-dial.static { cursor: default; }
+.knob-dial.disabled { opacity: 0.5; }
+.knob-readout {
+  pointer-events: none; position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.875rem; color: var(--foreground);
+}
+.knob-readout.unknown { color: var(--muted-foreground); }
+.knob-label {
+  font-weight: 700; text-transform: uppercase;
+  color: color-mix(in oklab, var(--foreground) 75%, transparent);
+  text-shadow: 0 1px 0 oklch(1 0 0 / 18%);
+  font-size: 0.68rem; letter-spacing: 0.18em;
+}
+.stroke-track { stroke: var(--track); }
+.stroke-steel { stroke: var(--steel); }
+.stroke-ember { stroke: var(--ember); }
+.stroke-muted { stroke: var(--muted-foreground); }
+.fill-metal-dark { fill: var(--metal-dark); }
+.tick { stroke: color-mix(in oklab, var(--metal-light) 30%, transparent); stroke-width: 1.2; }
+
+/* ---- amp dial ---- */
+.ampdial { display: flex; user-select: none; flex-direction: column; align-items: center; gap: 0.5rem; }
+.ampdial-face {
+  position: relative; touch-action: none; cursor: grab;
+  border-radius: 9999px; outline: none;
+}
+.ampdial-face:active { cursor: grabbing; }
+.ampdial-face:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.ampdial-ring {
+  pointer-events: none; position: absolute; inset: 0; border-radius: 9999px;
+  border: 1px solid oklch(1 0 0 / 4%);
+  background: linear-gradient(to bottom right, oklch(1 0 0 / 5%), transparent);
+}
+.ampdial-orbit {
+  position: absolute; font-family: var(--font-mono); font-size: 0.5rem;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--muted-foreground); pointer-events: none;
+}
+.ampdial-name {
+  font-family: var(--font-display); font-size: 0.8rem; text-transform: uppercase;
+  letter-spacing: 0.12em; text-align: center; max-width: 12rem;
+}
+.ampdial-badge {
+  font-family: var(--font-mono); font-size: 0.5rem; text-transform: uppercase;
+  letter-spacing: 0.2em; color: var(--muted-foreground);
+}
+
+/* ---- stomp tile ---- */
+.stomp {
+  position: relative; min-width: 0; overflow: hidden;
+  border: 1px solid var(--hairline);
+  transition: all 150ms;
+  clip-path: polygon(7% 0, 93% 0, 100% 12%, 96% 100%, 4% 100%, 0 12%);
+  background: linear-gradient(145deg, var(--panel-raised), var(--panel) 55%, var(--metal-dark));
+  box-shadow: 0 9px 0 var(--metal-dark), 0 14px 20px oklch(0 0 0 / 45%);
+}
+.stomp:active { transform: translateY(4px); box-shadow: none; }
+.stomp.on { background: none; }
+.stomp.on.coral   { border-color: var(--signal-coral);   color: var(--signal-coral);   box-shadow: 0 10px 24px color-mix(in oklab, var(--signal-coral) 28%, transparent); }
+.stomp.on.cyan    { border-color: var(--signal-cyan);    color: var(--signal-cyan);    box-shadow: 0 10px 24px color-mix(in oklab, var(--signal-cyan) 28%, transparent); }
+.stomp.on.lime    { border-color: var(--signal-lime);    color: var(--signal-lime);    box-shadow: 0 10px 24px color-mix(in oklab, var(--signal-lime) 25%, transparent); }
+.stomp.on.violet  { border-color: var(--signal-violet);  color: var(--signal-violet);  box-shadow: 0 10px 24px color-mix(in oklab, var(--signal-violet) 28%, transparent); }
+.stomp-sheen {
+  pointer-events: none; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--foreground) 35%, transparent), transparent);
+}
+.stomp-face {
+  position: relative;
+  display: flex; height: 100%; width: 100%;
+  flex-direction: column; align-items: flex-start; justify-content: space-between;
+  gap: 0.25rem; text-align: left; outline: none; padding: 0.75rem 0.875rem;
+}
+.stomp-face::before {
+  content: ""; position: absolute; left: 8%; right: 8%; top: 0.5rem; height: 1px;
+  background: color-mix(in oklab, var(--metal-light) 30%, transparent);
+}
+.stomp-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.stomp-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-display); font-size: 1.125rem;
+  text-transform: uppercase; line-height: 1; letter-spacing: 0.08em;
+  color: color-mix(in oklab, var(--foreground) 85%, transparent);
+}
+.stomp.on .stomp-name { color: currentColor; }
+.stomp-sub {
+  display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+.stomp.on .stomp-sub { color: currentColor; opacity: 0.8; }
+.stomp-bar { margin-top: 0.25rem; height: 3px; width: 100%; border-radius: 9999px; background: var(--track); transition: all 150ms; }
+.stomp.on .stomp-bar { background: currentColor; box-shadow: 0 0 14px currentColor; }
+.stomp-gear {
+  position: absolute; bottom: 0.375rem; right: 0.375rem;
+  border-radius: 3px; border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--background) 70%, transparent);
+  padding: 0.375rem; color: var(--muted-foreground); backdrop-filter: blur(4px);
+}
+.stomp-gear:hover { border-color: color-mix(in oklab, var(--steel) 60%, transparent); color: var(--steel); }
+.stomp-gear svg { height: 0.875rem; width: 0.875rem; }
+
+.led { height: 0.75rem; width: 0.75rem; border-radius: 9999px; transition: all 150ms; }
+.led-off    { background: color-mix(in oklab, var(--muted-foreground) 25%, transparent); }
+.led-green  { background: var(--led-green);  box-shadow: 0 0 14px var(--led-green); }
+.led-red    { background: var(--led-red);    box-shadow: 0 0 14px var(--led-red); }
+.led-yellow { background: var(--led-yellow); box-shadow: 0 0 14px var(--led-yellow); }
+
+/* ---- channel rail ---- */
+.rail { display: grid; grid-auto-flow: column; auto-cols: 1fr; grid-auto-columns: 1fr; gap: 0.375rem; }
+.rail-btn {
+  min-width: 0; border-radius: 4px; border: 1px solid var(--hairline);
+  background: var(--panel); padding: 0.5rem; text-align: left;
+  transition: border-color 150ms, background-color 150ms;
+}
+.rail-btn:disabled { opacity: 0.5; }
+.rail-btn:hover:not(:disabled) { border-color: color-mix(in oklab, var(--steel) 40%, transparent); }
+.rail-btn.active {
+  border-color: var(--ember);
+  background: color-mix(in oklab, var(--ember) 15%, transparent);
+  box-shadow: var(--shadow-glow-ember, 0 0 12px var(--ember));
+}
+.rail-btn.panel:not(.active) { border-color: color-mix(in oklab, var(--steel) 30%, transparent); }
+.rail-bank {
+  display: block; font-family: var(--font-mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 0.2em; color: var(--muted-foreground);
+}
+.rail-btn.active .rail-bank { color: var(--ember); }
+.rail-name {
+  margin-top: 0.125rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-display); font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--foreground);
+}
+
+/* ---- footswitches ---- */
+.footswitches { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.375rem; }
+.footswitch {
+  border-radius: 3px; border: 1px solid var(--hairline); background: var(--panel);
+  padding: 0.5rem 0.125rem; text-align: center; color: var(--muted-foreground);
+  transition: color 150ms, border-color 150ms, background-color 150ms;
+}
+.footswitch:hover { color: var(--foreground); }
+.footswitch.on {
+  border-color: color-mix(in oklab, var(--ember) 70%, transparent);
+  background: color-mix(in oklab, var(--ember) 10%, transparent);
+  color: var(--ember);
+}
+.footswitch span {
+  display: block; font-family: var(--font-display); font-size: 0.55rem;
+  text-transform: uppercase; line-height: 1.15;
+}
+
+/* ---- treadle ---- */
+.treadle-wrap {
+  display: flex; min-height: 0; min-width: 0; flex-direction: column; gap: 0.5rem;
+  perspective: 520px; perspective-origin: 50% 85%;
+}
+.treadle-head { display: flex; flex-shrink: 0; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.treadle-title { font-family: var(--font-display); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.2em; }
+.treadle-range { font-family: var(--font-mono); font-size: 0.6rem; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.treadle-head, .treadle-actions { position: relative; z-index: 2; }
+
+/* The slab is tilted in 3D; without its own row it projects over the label
+   and the buttons and swallows their clicks. */
+.treadle-slab {
+  position: relative; z-index: 1; flex: 1; min-height: 0; max-height: 78%; touch-action: none; cursor: ns-resize;
+  overflow: hidden; border-radius: 4px; border: 1px solid var(--hairline);
+  background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+  transform-style: preserve-3d; transition: transform 120ms ease-out;
+  outline: none;
+}
+.treadle-slab:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.treadle-slab.on { border-color: color-mix(in oklab, var(--ember) 60%, transparent); }
+.treadle-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--ember) 45%, transparent), color-mix(in oklab, var(--ember) 12%, transparent));
+  transition: height 60ms linear;
+}
+.treadle-tread {
+  position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(0deg, oklch(1 0 0 / 7%) 0 2px, transparent 2px 9px);
+  pointer-events: none;
+}
+.treadle-value {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 1.5rem; font-variant-numeric: tabular-nums;
+  color: var(--foreground); text-shadow: 0 2px 6px oklch(0 0 0 / 80%); pointer-events: none;
+}
+.treadle-actions {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  gap: 0.375rem; flex-shrink: 0;
+  /* clear of the slab, which the 3D tilt projects below its own box */
+  margin-top: 0.5rem;
+}
+.treadle-actions .chip { padding: 0.375rem 0.25rem; font-size: 0.5rem; letter-spacing: 0.1em; }
+
+/* ---- EQ dock ---- */
+.eq-dock {
+  border-radius: 6px; border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--panel) 92%, transparent);
+  padding: 0.5rem; backdrop-filter: blur(8px);
+  box-shadow: 0 18px 40px oklch(0 0 0 / 60%);
+  width: 300px;
+}
+.eq-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.375rem; }
+.eq-title { font-family: var(--font-display); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; }
+.eq-pad {
+  position: relative; min-height: 0; flex: 1; touch-action: none; cursor: crosshair;
+  overflow: hidden; border-radius: 4px; border: 1px solid var(--hairline); background: var(--panel);
+}
+.eq-pad.dragging { border-color: color-mix(in oklab, var(--ember) 60%, transparent); }
+.eq-labels {
+  display: grid; grid-template-columns: repeat(10, 1fr); gap: 1px; margin-top: 0.25rem;
+  font-family: var(--font-mono); font-size: 0.45rem; color: var(--muted-foreground); text-align: center;
+}
+.eq-labels span.hot { color: var(--steel); }
+.stroke-hairline { stroke: var(--hairline); }
+.fill-steel-soft { fill: color-mix(in oklab, var(--steel) 10%, transparent); }
+.fill-muted-soft { fill: color-mix(in oklab, var(--muted) 10%, transparent); }
+.stroke-steel-dim { stroke: color-mix(in oklab, var(--muted-foreground) 50%, transparent); }
+
+/* ---- busy bar ---- */
+.busybar {
+  pointer-events: none; position: fixed; left: 0; right: 0; top: 0; z-index: 50;
+  transition: opacity 150ms; opacity: 0;
+}
+.busybar.show { opacity: 1; }
+.busybar-track { height: 2px; width: 100%; overflow: hidden; background: color-mix(in oklab, var(--ember) 15%, transparent); }
+.busybar-fill { height: 100%; width: 33%; background: var(--ember); animation: busy-sweep 1.1s ease-in-out infinite; }
+.busybar-label-wrap { display: flex; justify-content: center; }
+.busybar-label {
+  border-radius: 0 0 3px 3px; border: 1px solid color-mix(in oklab, var(--ember) 40%, transparent);
+  border-top: 0; background: var(--panel); padding: 0.25rem 0.75rem;
+  font-family: var(--font-mono); font-size: 0.58rem; text-transform: uppercase;
+  letter-spacing: 0.18em; color: var(--ember);
+}
+
+/* ---- modal (block editor + confirm) ---- */
+.overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: oklch(0 0 0 / 70%); backdrop-filter: blur(2px);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.overlay.center { align-items: center; }
+.sheet {
+  width: 100%; max-height: 90vh; overflow-y: auto;
+  border-top: 1px solid var(--hairline); background: var(--background);
+  padding: 1rem;
+}
+.sheet-inner { margin: 0 auto; width: 100%; max-width: 1400px; }
+.sheet-title {
+  font-family: var(--font-display); font-size: 1rem;
+  text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 0.75rem;
+}
+.confirm {
+  max-width: 30rem; border-radius: 6px; border: 1px solid var(--hairline);
+  background: var(--panel); padding: 1.25rem; margin: 1rem;
+}
+.confirm h2 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.12em; font-size: 1rem; }
+.confirm p { color: var(--muted-foreground); font-size: 0.875rem; line-height: 1.5; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+.btn {
+  border-radius: 3px; border: 1px solid var(--hairline); background: var(--panel);
+  padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
+}
+.btn:hover { border-color: color-mix(in oklab, var(--steel) 50%, transparent); }
+.btn-danger { background: var(--ember); color: var(--ember-foreground); border-color: var(--ember); }
+.btn-danger:hover { background: color-mix(in oklab, var(--ember) 90%, transparent); }
+
+/* ---- segmented + sliders in the block editor ---- */
+.field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1rem; }
+.field-label {
+  font-size: 0.62rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.18em; color: var(--muted-foreground);
+}
+.segmented { display: grid; gap: 0.25rem; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+.seg {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px; border: 1px solid var(--hairline); background: var(--panel);
+  padding: 0.625rem 0.5rem; text-align: center;
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+  line-height: 1.15; letter-spacing: 0.02em; color: var(--muted-foreground);
+  transition: border-color 150ms, color 150ms, background-color 150ms;
+}
+.seg:hover { border-color: color-mix(in oklab, var(--steel) 40%, transparent); color: var(--foreground); }
+.seg.active {
+  border-color: var(--steel); background: color-mix(in oklab, var(--steel) 15%, transparent);
+  color: var(--steel); box-shadow: var(--shadow-glow-steel, 0 0 12px var(--steel));
+}
+.knob-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.toggle-btn {
+  border-radius: 3px; border: 1px solid var(--metal-dark);
+  padding: 0.625rem 0.75rem;
+  font-family: var(--font-display); font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.18em;
+  background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  box-shadow: 0 3px 0 oklch(0 0 0 / 75%);
+  transition: transform 100ms;
+  align-self: center;
+}
+.toggle-btn:active { transform: translateY(2px); box-shadow: none; }
+.toggle-btn.on {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--steel) 35%, var(--panel-raised)), var(--panel));
+  color: var(--steel); box-shadow: var(--shadow-glow-steel, 0 0 12px var(--steel));
+}
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- EQ dock: collapsible, because it overlays the board on a 9" panel ---- */
+.eq-anchor { position: fixed; bottom: 0.75rem; right: 0.75rem; z-index: 50; }
+.eq-dock.collapsed { width: 190px; padding: 0.375rem 0.5rem; }
+/* The riser holds the treadle and its buttons at the bottom-right; the dock
+   must not sit on top of them. Reserve the strip it needs. */
+.riser { padding-bottom: 92px; }
+.eq-dock.collapsed .eq-mini { height: 26px; }
+.eq-toggle {
+  display: flex; align-items: center; gap: 0.375rem;
+  color: inherit; padding: 0;
+}
+.eq-caret { color: var(--muted-foreground); font-size: 0.7rem; }
+.eq-mini { height: 34px; margin-top: 0.25rem; }
