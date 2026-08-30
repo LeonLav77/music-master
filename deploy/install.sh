@@ -37,7 +37,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   python3 python3-venv python3-dev build-essential libasound2-dev \
   pipewire pipewire-audio-client-libraries wireplumber pipewire-bin \
-  ffmpeg curl ca-certificates rsync \
+  ffmpeg curl ca-certificates rsync git \
   iw rfkill network-manager \
   xserver-xorg xinit x11-xserver-utils xinput unclutter
 

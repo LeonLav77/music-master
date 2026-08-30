@@ -23,6 +23,12 @@ cd "$APP_DIR" 2>/dev/null || { echo "no $APP_DIR - is this the Pi?" >&2; exit 1;
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m    %s\033[0m\n' "$*"; }
 
+# git refuses to touch a repo owned by someone else, which is exactly what
+# this is: owned by the service user, operated on with sudo. Declaring it
+# safe once is the documented answer.
+git config --system --get-all safe.directory 2>/dev/null | grep -qx "$APP_DIR" ||
+  git config --system --add safe.directory "$APP_DIR"
+
 git rev-parse --git-dir >/dev/null 2>&1 || {
   cat >&2 <<'EOF'
 This install is not a git checkout, so there is nothing to pull.
