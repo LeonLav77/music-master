@@ -102,7 +102,11 @@ export function treadle() {
     // Tilt only backwards (0deg at heel-down, never past vertical). Rotating
     // toward the viewer scales the near edge up under perspective, which is
     // what pushed the slab out of the riser at high values.
-    get tilt() { return 34 - this.value * 0.34; },
+    //
+    // Kept shallow: the rotation foreshortens the slab's painted height while
+    // its layout box keeps the full column, so a steep angle reads as a large
+    // empty strip above the pedal.
+    get tilt() { return 16 - this.value * 0.16; },
     get fillHeight() { return `${this.value}%`; },
     get slabStyle() {
       // transform-origin at the bottom: the pedal hinges on its heel, so the
