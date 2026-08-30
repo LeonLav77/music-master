@@ -48,6 +48,8 @@
   --steel-foreground: oklch(0.16 0.01 260);
   --ember: oklch(0.66 0.19 38);
   --ember-foreground: oklch(0.15 0.01 260);
+  /* Between steel and ember: a warning, not a failure. */
+  --amber: oklch(0.78 0.14 75);
   --led-green: oklch(0.78 0.19 145);
   --led-red: oklch(0.62 0.23 27);
   --led-yellow: oklch(0.85 0.17 90);
@@ -316,6 +318,9 @@ textarea,
 .dot-open { background: var(--steel); box-shadow: var(--shadow-glow-steel, 0 0 12px var(--steel)); }
 .dot-connecting { background: color-mix(in oklab, var(--foreground) 40%, transparent); animation: pulse 2s ease-in-out infinite; }
 .dot-closed { background: var(--ember); box-shadow: 0 0 12px var(--ember); }
+/* Server is fine, the amp is not answering. Amber rather than red: nothing
+   is broken, and the reconnect loop is already retrying. */
+.dot-waiting { background: var(--amber); box-shadow: 0 0 12px var(--amber); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.4; } }
 
 .conn { display: flex; flex-shrink: 0; align-items: center; gap: 0.375rem; }

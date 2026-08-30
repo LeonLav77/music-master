@@ -23,7 +23,7 @@ Anything without a dedicated helper is reachable by name:
 """
 
 __all__ = [
-    "connect", "disconnect", "amp_session",
+    "connect", "disconnect", "is_connected", "amp_session",
     "get_parameter", "set_parameter", "list_parameters",
     "get_wide_parameter", "set_wide_parameter",
     # amp
@@ -116,6 +116,7 @@ __all__ = [
     "show_settings",
 ]
 
+import contextlib
 from contextlib import contextmanager
 
 from katana_amp.katana import (
@@ -142,7 +143,11 @@ _amp = None
 
 
 def connect(port_name=None):
-    """Open the shared connection, or return the one already open."""
+    """Open the shared connection, or return the one already open.
+
+    A connection that fails to open leaves nothing cached, so the next call
+    tries again from scratch rather than handing back a half-dead object.
+    """
     global _amp
     if _amp is None:
         _amp = Katana(port_name)
@@ -153,8 +158,16 @@ def disconnect():
     """Close the shared connection. The next helper call reopens it."""
     global _amp
     if _amp is not None:
-        _amp.close()
+        # A port whose device has been unplugged can raise on close; the
+        # point is to stop using it either way.
+        with contextlib.suppress(Exception):
+            _amp.close()
         _amp = None
+
+
+def is_connected():
+    """True if a connection is currently open."""
+    return _amp is not None
 
 
 @contextmanager

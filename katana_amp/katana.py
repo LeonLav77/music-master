@@ -403,8 +403,19 @@ def _encode_length(length):
 
 
 def find_ports():
-    """Return the MIDI port names that look like a Katana."""
-    return [name for name in mido.get_output_names() if "KATANA" in name.upper()]
+    """Return the MIDI port names that look like a Katana's control port.
+
+    The amp exposes two ports and only MIDI 1 answers SysEx, so both tokens
+    have to match. Relying on MIDI 1 sorting first works on a desktop and is
+    a coin flip on a Pi, where ALSA enumeration order is not guaranteed.
+
+    Ports that only match KATANA are returned after the MIDI 1 ones rather
+    than dropped: on a host that names them differently, a port that cannot
+    answer beats no port at all.
+    """
+    katana = [name for name in mido.get_output_names() if "KATANA" in name.upper()]
+    control = [name for name in katana if "MIDI 1" in name.upper()]
+    return control + [name for name in katana if name not in control]
 
 
 # Which named-value table each parameter draws from. Everything not listed
@@ -547,7 +558,7 @@ class Katana:
                     "No Katana MIDI port found. Is the amp powered on and "
                     "connected over USB?"
                 )
-            # MIDI 1 is the SysEx control port; it sorts first.
+            # find_ports puts the SysEx control port (MIDI 1) first.
             port_name = found[0]
 
         self.port_name = port_name

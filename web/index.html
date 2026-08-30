@@ -58,9 +58,9 @@
         <div class="status-actions">
           <!-- Whether the amp is actually reachable. Without this a
                disconnected surface looks identical to a working one. -->
-          <span class="conn" :title="'Amp ' + k.connection">
-            <span aria-hidden="true" class="dot" :class="'dot-' + k.connection"></span>
-            <span class="conn-label engrave" x-text="k.connection === 'open' ? 'live' : k.connection === 'closed' ? 'offline' : 'connecting'"></span>
+          <span class="conn" :title="k.connection === 'open' ? (k.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
+            <span aria-hidden="true" class="dot" :class="'dot-' + k.statusKind"></span>
+            <span class="conn-label engrave" x-text="k.statusLabel"></span>
           </span>
 
           <span class="sync-label engrave" x-text="k.syncLabel"></span>

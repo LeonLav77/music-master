@@ -390,6 +390,7 @@ address instead of localhost). Interactive API docs at `/docs`.
 |---|---|
 | `GET /api/parameters` | Every parameter with range, kind and options — build a UI from this |
 | `GET /api/state` | Current value of everything, from cache |
+| `GET /api/status` | Whether the amp is answering — cheap enough for a health check |
 | `GET /api/parameter/{name}` | One value |
 | `PUT /api/parameter/{name}` | `{"value": 75}` |
 | `POST /api/channel/{name}` | `a1`–`a4`, `panel`, `b1`–`b4` |
@@ -397,7 +398,7 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `GET /api/tsl` | Patch files in `patches/` |
 | `POST /api/tsl/{file}/{index}` | Load one patch into the amp |
 | `POST /api/refresh` | Re-read the amp (after someone turns a knob) |
-| `WS /ws` | Live state pushes |
+| `WS /ws` | Live state pushes, including `{"type":"amp","connected":false}` when the amp comes and goes |
 
 The schema drives the client, so there is no hardcoded list of fields on
 either side:
@@ -439,21 +440,25 @@ the next channel change.
 with [Alpine](https://alpinejs.dev) for reactivity. No build step, no
 dependencies to install.
 
-Two processes, side by side:
+One process serves both the API and the page:
 
 ```bash
-./run-server                                    # the amp API on :8000
-
-cd web && python3 -m http.server 8080 --bind 0.0.0.0   # the UI on :8080
+./run                 # API and UI on :8000
+./run --port 9000     # both, somewhere else
+./run --no-ui         # the API on its own
 ```
 
-Then open `http://localhost:8080`, or `http://<this-machine>:8080` from a
-phone on the same network. `--bind 0.0.0.0` is what makes the second work.
+Then open `http://localhost:8000`, or `http://<this-machine>:8000` from a
+phone on the same network — it binds `0.0.0.0`, which is what makes the
+second work.
 
-The page derives the API host from the address it was loaded from, so
-opening `http://192.168.1.124:8080` talks to `http://192.168.1.124:8000`
-with no configuration. Override with `window.KATANA_API_URL` in
-`web/index.html` to point at a fixed address (the amp Pi).
+The page is same-origin with the API, so it uses relative URLs and needs no
+configuration wherever you open it from. Set `window.KATANA_API_URL` in
+`web/index.html` only if you serve the page separately from the API.
+
+The split is in the code rather than the deployment: `server/api.py` is the
+amp and knows nothing about a UI, `server/ui.py` is the static mount, and
+`server/app.py` is the only place that knows about both.
 
 It talks to the server through `web/js/transport.js` and nothing else —
 changes go over the WebSocket, with HTTP as the fallback.

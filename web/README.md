@@ -6,14 +6,18 @@ reload the page.
 
 ## Running it
 
-Any static file server works — the page only needs to be served over HTTP
-(ES modules do not load from `file://`):
+The server serves this directory itself, so there is nothing separate to
+start:
 
-    cd web && python3 -m http.server 8080
+    ./run
 
-Then open `http://<host>:8080`. The API is expected on port **8000** of the
-same host, which is what makes a phone work: opening `http://192.168.1.124:8080`
-talks to `http://192.168.1.124:8000`. Override with:
+Then open `http://<host>:8000` — from a phone on the same network too. The
+API is on the same origin as the page, so the UI talks to whatever address
+you opened it at, with no configuration and no CORS.
+
+To serve the page from somewhere else (any static file server will do — it
+only needs HTTP, since ES modules do not load from `file://`), point it at
+the API with:
 
     <script>window.KATANA_API_URL = "http://amp-pi.local:8000"</script>
 

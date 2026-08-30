@@ -80,6 +80,11 @@ export function createKatanaStore() {
   return {
     state: { ...offlineDefaults },
     connection: "connecting",
+    // Whether the amp itself is answering. Distinct from `connection`,
+    // which is only the socket to the server: the server can be perfectly
+    // reachable with the amp switched off, and that has to look different
+    // from a server that is not there at all.
+    ampConnected: false,
     live: false,
     busy: null,
     channel: "a1",
@@ -108,6 +113,29 @@ export function createKatanaStore() {
       return LED_COLORS[typeof v === "number" ? v : 0] ?? "off";
     },
     /** Formatted "synced HH:MM", or never. */
+    /** One word for the indicator: what is actually wrong, if anything.
+     *
+     * The three states are genuinely different problems: no server (the Pi
+     * is down or the wifi dropped), server but no amp (the amp is off or
+     * unplugged), and everything fine. Collapsing the first two into
+     * "offline" was what made a switched-off amp look like a crashed
+     * server.
+     */
+    get statusLabel() {
+      if (this.connection !== "open") {
+        return this.connection === "closed" ? "no server" : "connecting";
+      }
+      return this.ampConnected ? "live" : "no amp";
+    },
+
+    /** Modifier for the indicator dot, matching statusLabel. */
+    get statusKind() {
+      if (this.connection !== "open") {
+        return this.connection === "closed" ? "closed" : "connecting";
+      }
+      return this.ampConnected ? "open" : "waiting";
+    },
+
     get syncLabel() {
       return this.lastSync
         ? `synced ${this.lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
@@ -228,6 +256,9 @@ export function createKatanaStore() {
     init() {
       transport.onConnectionChange((s) => {
         this.connection = s;
+        // A dropped socket means we have stopped hearing about the amp, not
+        // that the amp is gone - but we can no longer claim it is there.
+        if (s !== "open") this.ampConnected = false;
       });
 
       transport.onMessage((message) => {
@@ -249,6 +280,13 @@ export function createKatanaStore() {
           }
           case "patches": {
             this._mergeNames(message.names);
+            break;
+          }
+          case "amp": {
+            this.ampConnected = message.connected;
+            // The values on screen are from before the amp went away, so
+            // they are no longer known to be true.
+            if (!message.connected) this.live = false;
             break;
           }
           case "error":

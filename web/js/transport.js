@@ -6,24 +6,21 @@
 // it, so a control being dragged is never fought by its own value. HTTP is
 // the fallback for when the socket is down.
 
-/** Port the FastAPI server listens on. */
-const API_PORT = "8000";
-
 /**
  * Where the API lives.
  *
- * Deriving the host from the address the page was actually loaded from is
- * what makes a phone work: opening http://192.168.1.124:8080 talks to
- * http://192.168.1.124:8000, while localhost keeps talking to localhost.
+ * The server serves this page and the API on the same origin, so the answer
+ * is "wherever the page came from" - no host, no port, nothing to keep in
+ * sync. Whatever address you opened, from a phone or the kiosk, the API is
+ * on it.
  *
- * Set window.KATANA_API_URL before this script loads to override
- * (e.g. the amp Pi's fixed address).
+ * Set window.KATANA_API_URL before this script loads to point somewhere
+ * else, for a UI served separately from the API it talks to.
  */
 function resolveBase() {
   const configured = window.KATANA_API_URL?.replace(/\/$/, "");
   if (configured) return configured;
-  const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:${API_PORT}`;
+  return window.location.origin;
 }
 
 const BASE = resolveBase();
