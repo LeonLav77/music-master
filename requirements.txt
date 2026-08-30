@@ -1,6 +1,11 @@
 mido==1.3.3
 python-rtmidi==1.5.8
 fastapi==0.141.1
-uvicorn[standard]==0.52.4
+# Plain uvicorn, not [standard]: the extras pull uvloop, httptools and
+# watchfiles, and watchfiles needs a Rust toolchain to build where there is
+# no wheel (armv7l, and a Zero 2 W is slow enough that it matters). None of
+# them are used here - no reload, and the amp is the bottleneck, not the
+# event loop.
+uvicorn==0.52.4
 websockets==16.0
 yt-dlp==2026.8.19

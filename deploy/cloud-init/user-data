@@ -1,0 +1,78 @@
+#cloud-config
+# Katana amp controller - first boot configuration.
+#
+# Written by deploy/bootstrap. This image uses cloud-init (NoCloud datasource,
+# reading this file from the boot partition) rather than the firstrun.sh hook
+# that Raspberry Pi Imager's settings dialog writes - which is why that dialog
+# never offered to set a hostname or wifi.
+
+hostname: gitra
+
+# avahi answers for gitra.local over mDNS. Needed because the venue AP has no
+# DNS server, and useful at home where the router has never heard of the Pi.
+packages:
+  - avahi-daemon
+
+users:
+  - name: leon
+    groups: [adm, sudo, audio, video, plugdev, users, input, netdev, gpio, i2c, spi]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    # !!! REPLACE THIS !!!  Generate one with:  openssl passwd -6
+    # Left as-is, password login simply does not work - the SSH key below
+    # still does, so this is a fallback rather than the way in.
+    passwd: CHANGEME
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP+6qL/hsJ/q20nJD+fv5Av2gRYoywcPEDlrn40hkMH/ leon@leon-lloyds
+
+ssh_pwauth: true
+
+# Enable the SSH daemon. ssh_pwauth above only decides whether passwords are
+# accepted - it does not start sshd, and Pi OS ships it disabled. Without
+# this the Pi comes up on the network with no way in and no way to read the
+# install log, which is exactly as useless as it sounds.
+ssh:
+  emit_keys_to_console: false
+
+# Hand the install to systemd rather than doing it here: it takes several
+# minutes (rtmidi compiles from source) and cloud-init should not be blocked
+# that long. The unit logs to the boot partition, which is the only thing
+# readable if the Pi never comes up.
+write_files:
+  - path: /usr/local/sbin/katana-plant
+    permissions: '0755'
+    content: |
+      #!/bin/sh
+      # Find the project on whichever path this image mounts the boot
+      # partition at, install the first-boot unit, and enable it.
+      set -eu
+      for d in /boot/firmware /boot; do
+        unit="$d/katana/deploy/systemd/katana-firstboot.service"
+        [ -f "$unit" ] || continue
+        install -m 644 "$unit" /etc/systemd/system/katana-firstboot.service
+        # The unit is written for /boot/firmware; correct it if this image
+        # mounts the boot partition at /boot instead.
+        if [ "$d" = /boot ]; then
+          sed -i 's|/boot/firmware/|/boot/|' \
+            /etc/systemd/system/katana-firstboot.service
+        fi
+        # FAT32 carries no permission bits, so nothing on the card is
+        # executable until we say so.
+        chmod +x "$d"/katana/deploy/firstboot "$d"/katana/deploy/install.sh
+        # --now, not just enable: cloud-init runs after multi-user.target
+        # has already been reached, so a plain enable would not start the
+        # unit until the *next* boot. That turns "flash and wait" into
+        # "flash, wait, reboot, wait again".
+        systemctl enable --now katana-firstboot.service
+        exit 0
+      done
+      echo "katana: no project found on the boot partition" >&2
+      exit 1
+
+runcmd:
+  # Enable SSH first and unconditionally: if the install then fails, you can
+  # still get in to find out why. Doing it the other way round means one bad
+  # install leaves an unreachable Pi.
+  - [ systemctl, enable, --now, ssh ]
+  - [ /usr/local/sbin/katana-plant ]

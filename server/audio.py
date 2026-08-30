@@ -21,6 +21,7 @@ thread rather than stalling the event loop and every WebSocket on it.
 
 import asyncio
 import contextlib
+import sys
 import shutil
 import subprocess
 from pathlib import Path
@@ -286,6 +287,21 @@ async def seek(body: SeekRequest):
 
 # --- Downloads -------------------------------------------------------------
 
+def _find_ytdlp():
+    """Locate yt-dlp, venv first.
+
+    It is a dependency in requirements.txt, so under a service it lives in
+    the venv's bin directory - which is not on PATH, because systemd runs the
+    interpreter by absolute path rather than activating anything. Looking
+    only at PATH reports it missing on exactly the install where it is
+    definitely present.
+    """
+    beside = Path(sys.executable).parent / "yt-dlp"
+    if beside.is_file():
+        return str(beside)
+    return shutil.which("yt-dlp")
+
+
 def _download(url, directory):
     """Fetch one video's audio into `directory` with yt-dlp.
 
@@ -295,13 +311,14 @@ def _download(url, directory):
     exactly like a local one - which is the point, since a fetched track
     should still play with the wifi off.
     """
-    if shutil.which("yt-dlp") is None:
+    ytdlp = _find_ytdlp()
+    if ytdlp is None:
         raise audio.AudioError(
             "yt-dlp is not installed - run: pip install yt-dlp"
         )
 
     result = subprocess.run(
-        ["yt-dlp",
+        [ytdlp,
          "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
          # No playlists: one link should not quietly fetch four hours.
          "--no-playlist",

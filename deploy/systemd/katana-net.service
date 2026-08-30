@@ -1,0 +1,34 @@
+[Unit]
+Description=Katana network - join a known wifi, or be one
+Documentation=https://github.com/LeonLav77/boss_test
+
+Requires=NetworkManager.service
+After=NetworkManager.service
+
+# Before the server, so that by the time the API is up there is an address to
+# reach it on. Not a hard dependency though: the amp is driven over USB, and
+# a network that fails to come up must not stop the thing from making noise.
+Before=katana.service
+
+ConditionPathExists=/opt/katana/deploy/net-decide
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Scanning takes a few seconds, and a busy radio can take longer.
+TimeoutStartSec=120
+
+ExecStart=/opt/katana/deploy/net-decide
+
+# Nothing on stop. Tearing the network down when the unit restarts - during
+# an update, say - would drop whoever is connected, including the person
+# doing the update.
+ExecStop=/bin/true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katana-net
+
+[Install]
+WantedBy=multi-user.target

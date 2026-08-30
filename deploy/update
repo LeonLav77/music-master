@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Pull the latest code and restart, safely.
+#
+#     sudo ./deploy/update            pull and apply
+#     sudo ./deploy/update --check    say what would change, do nothing
+#
+# Run on the Pi, from /opt/katana. Push from your laptop first.
+#
+# The one thing this must never do is leave the Pi worse than it found it.
+# There is no screen and often no second machine, so an update that breaks
+# the server has to undo itself rather than wait to be noticed: the commit
+# before the pull is remembered, and going back to it is automatic.
+
+set -uo pipefail   # not -e: a failed step must roll back, not abandon ship
+
+APP_DIR=/opt/katana
+APP_USER=katana
+PORT="${PORT:-8000}"
+
+cd "$APP_DIR" 2>/dev/null || { echo "no $APP_DIR - is this the Pi?" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+
+say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+warn() { printf '\033[33m    %s\033[0m\n' "$*"; }
+
+git rev-parse --git-dir >/dev/null 2>&1 || {
+  cat >&2 <<'EOF'
+This install is not a git checkout, so there is nothing to pull.
+
+To convert it (once):
+
+  sudo systemctl stop katana
+  sudo mv /opt/katana /opt/katana.old
+  sudo git clone https://github.com/LeonLav77/music-master.git /opt/katana
+  sudo cp -r /opt/katana.old/{venv,tracks,patches} /opt/katana/
+  sudo chown -R katana:katana /opt/katana
+  sudo systemctl start katana
+EOF
+  exit 1
+}
+
+# --- what is out there? ----------------------------------------------------
+
+say "Fetching"
+before=$(git rev-parse HEAD)
+git fetch --quiet origin || { echo "could not reach the remote - is there internet?" >&2; exit 1; }
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+after=$(git rev-parse "origin/$branch")
+
+if [ "$before" = "$after" ]; then
+  say "Already up to date ($(git log -1 --format='%h %s'))"
+  exit 0
+fi
+
+echo "  $(git rev-parse --short "$before")  ->  $(git rev-parse --short "$after")"
+git log --oneline "$before..$after" | sed 's/^/    /'
+
+# Work out what kind of update this is before pulling, so the decision is
+# made on the diff rather than on guesswork afterwards.
+changed=$(git diff --name-only "$before" "$after")
+needs_venv=$(printf '%s\n' "$changed" | grep -q '^requirements.txt$' && echo yes || echo no)
+needs_units=$(printf '%s\n' "$changed" | grep -q '^deploy/systemd/\|^deploy/udev/' && echo yes || echo no)
+
+echo
+echo "  venv:  $needs_venv"
+echo "  units: $needs_units"
+
+if [ "${1:-}" = "--check" ]; then
+  say "Nothing changed (--check)"
+  exit 0
+fi
+
+# --- apply -----------------------------------------------------------------
+
+# Local edits would make the pull fail halfway. Say so rather than merging.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  warn "there are local changes in $APP_DIR"
+  warn "stashing them - 'sudo git -C $APP_DIR stash pop' to get them back"
+  git stash push --quiet --include-untracked \
+    --message "before update $(date -Iseconds)"
+fi
+
+say "Pulling"
+git merge --ff-only "origin/$branch" --quiet || {
+  echo "cannot fast-forward - the local branch has diverged" >&2
+  echo "look at: sudo git -C $APP_DIR log --oneline --graph --all | head" >&2
+  exit 1
+}
+chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+
+rollback() {
+  warn "rolling back to $(git rev-parse --short "$before")"
+  git reset --hard --quiet "$before"
+  chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+  [ "$needs_units" = yes ] && install_units
+  systemctl restart katana
+  sleep 3
+  if curl -sf -o /dev/null --max-time 5 "http://localhost:$PORT/api/status"; then
+    warn "rolled back and the server is up again"
+  else
+    warn "rolled back but the server is still down - journalctl -u katana -n 50"
+  fi
+}
+
+install_units() {
+  install -m 644 "$APP_DIR"/deploy/systemd/*.service /etc/systemd/system/ 2>/dev/null
+  install -m 644 "$APP_DIR"/deploy/systemd/*.timer   /etc/systemd/system/ 2>/dev/null
+  install -m 644 "$APP_DIR"/deploy/udev/*.rules      /etc/udev/rules.d/   2>/dev/null
+  systemctl daemon-reload
+  udevadm control --reload 2>/dev/null || true
+}
+
+if [ "$needs_venv" = yes ]; then
+  say "Updating the virtualenv (a compile here can take minutes)"
+  if ! sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"; then
+    warn "pip failed"
+    rollback
+    exit 1
+  fi
+fi
+
+if [ "$needs_units" = yes ]; then
+  say "Reinstalling services"
+  install_units
+fi
+
+say "Restarting"
+systemctl restart katana
+
+# --- did it survive? -------------------------------------------------------
+
+say "Checking"
+for _ in $(seq 1 20); do
+  if curl -sf -o /dev/null --max-time 3 "http://localhost:$PORT/api/status"; then
+    status=$(curl -s --max-time 3 "http://localhost:$PORT/api/status")
+    echo "  server up: $status"
+    say "Updated to $(git log -1 --format='%h %s')"
+    exit 0
+  fi
+  sleep 1
+done
+
+warn "the server did not come back within 20s"
+rollback
+exit 1

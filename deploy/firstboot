@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Run the installer once, on the first boot, with no one watching.
+#
+# Started by katana-firstboot.service, which is planted by `bootstrap`. You
+# do not run this by hand - run deploy/install.sh instead.
+#
+# The whole point is that nobody is at a keyboard: no screen, no SSH, nothing
+# to watch. So the two things that matter here are that it logs somewhere you
+# can read without booting the Pi, and that it never runs twice.
+
+set -uo pipefail   # deliberately not -e: a failure must still be reported
+
+STAMP=/var/lib/katana/.installed
+
+# The FAT32 boot partition, readable by pulling the card and putting it in a
+# laptop. That is the only way to see what happened on a headless Pi that did
+# not come up, so the log goes here rather than only to the journal.
+for candidate in /boot/firmware /boot; do
+  [ -d "$candidate/katana" ] && BOOTDIR="$candidate" && break
+done
+BOOTDIR="${BOOTDIR:-/boot/firmware}"
+SRC="$BOOTDIR/katana"
+LOG="$BOOTDIR/katana-install.log"
+
+# Unbuffered and flushed as it goes: a log that only appears at the end is no
+# use when the interesting case is the run that never finished. FAT32 has no
+# journalling, so sync after each write or a power cut loses the tail.
+log() {
+  printf '%s  %s\n' "$(date '+%H:%M:%S')" "$*" >> "$LOG"
+  sync
+}
+
+exec 2> >(while IFS= read -r line; do log "  ! $line"; done)
+
+log "=== first boot: $(date) ==="
+log "model:  $( { tr -d '\0' < /proc/device-tree/model; } 2>/dev/null || echo unknown)"
+log "kernel: $(uname -srm)"
+log "source: $SRC"
+
+# -f, not -x: this lives on FAT32, where nothing is ever executable and -x
+# would fail on a perfectly good installer.
+if [ ! -f "$SRC/deploy/install.sh" ]; then
+  log "FAILED: no installer at $SRC/deploy/install.sh"
+  log "Is the katana/ folder on the boot partition, with deploy/ inside it?"
+  exit 1
+fi
+
+# The installer needs the internet. Say so plainly in the log rather than
+# letting apt fail with something less obvious.
+log "waiting for the network"
+online=no
+for _ in $(seq 1 60); do
+  if getent hosts deb.debian.org >/dev/null 2>&1; then online=yes; break; fi
+  sleep 2
+done
+if [ "$online" != yes ]; then
+  log "FAILED: no internet after 120s"
+  log "First boot needs wifi - the install pulls packages from apt and PyPI."
+  log "Check the wifi you set in Raspberry Pi Imager, then power-cycle."
+  exit 1
+fi
+log "network is up: $(hostname -I 2>/dev/null | awk '{print $1}')"
+
+log "running the installer (several minutes - rtmidi compiles from source)"
+# Interpreter named explicitly, for the same FAT32 reason.
+if bash "$SRC/deploy/install.sh" >> "$LOG" 2>&1; then
+  install -d /var/lib/katana
+  date -Iseconds > "$STAMP"
+
+  # Never again, by both routes: the stamp above and the unit itself.
+  systemctl disable katana-firstboot.service >/dev/null 2>&1 || true
+
+  log "=== done ==="
+  log "Server:  http://$(hostname -I 2>/dev/null | awk '{print $1}'):8000"
+  log "Also:    http://$(hostname).local:8000"
+  log ""
+  log "Plug a screen in and the kiosk starts on its own."
+else
+  status=$?
+  log "=== FAILED (exit $status) ==="
+  log "The log above says where. Fix it, then either power-cycle to retry"
+  log "or ssh in and run: sudo bash $SRC/deploy/install.sh"
+  # No stamp and no disable, so a power-cycle retries. A failed install that
+  # marked itself done would need SSH to recover - the thing we are avoiding.
+  exit "$status"
+fi

@@ -1,0 +1,19 @@
+[Unit]
+Description=Re-decide the network periodically
+Documentation=https://github.com/LeonLav77/boss_test
+
+[Timer]
+# Every couple of minutes, ask again whether we are in the right mode. This
+# is what makes the Pi recover on its own: carry it out of range of the house
+# wifi and the client connection dies, and without this it would sit there
+# with no network at all until someone rebooted it. With it, the access point
+# comes up by itself a minute or two later.
+#
+# net-decide does nothing when the current state is already right, so the
+# usual cost of a tick is one comparison.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

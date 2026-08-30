@@ -1,0 +1,48 @@
+[Unit]
+Description=Katana kiosk (full-screen control surface on the local display)
+Documentation=https://github.com/LeonLav77/boss_test
+
+# The kiosk follows the server, but does not hold it up: the API and the AP
+# must come up whether or not there is a screen, so this is Wants/After and
+# never Requires. A kiosk that cannot start must not take the server down -
+# the phone is the fallback interface and has to keep working.
+Wants=katana.service
+After=katana.service systemd-user-sessions.service
+
+# Started by udev when a display is connected (see 99-katana-display.rules),
+# so there is no graphical.target dependency and no reboot needed: plug in a
+# screen and it appears. ConditionPathExists keeps a manual start honest.
+ConditionPathExists=/dev/dri/card0
+
+# As above: a kiosk that gives up permanently would need a laptop to revive.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=katana
+Group=katana
+SupplementaryGroups=video render input tty
+
+WorkingDirectory=/opt/katana
+
+# Wait for the server before painting a browser at it, so the first thing on
+# screen is the surface rather than a connection error. Capped so a broken
+# server still leaves a visible browser rather than a black screen forever.
+ExecStartPre=/opt/katana/deploy/wait-for-server 30
+
+# xinit rather than a display manager: no login, no desktop, no session
+# manager to configure. One X server, one window, nothing else.
+ExecStart=/usr/bin/xinit /opt/katana/deploy/kiosk-session -- :0 vt7 -keeptty -nolisten tcp
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katana-kiosk
+
+# Chromium needs a real /tmp for its profile and shared memory.
+PrivateTmp=no
+
+[Install]
+WantedBy=multi-user.target

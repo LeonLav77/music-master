@@ -1,0 +1,47 @@
+[Unit]
+Description=Katana control surface (API, aux deck and UI)
+Documentation=https://github.com/LeonLav77/boss_test
+
+# Wants, not Requires: the network is where clients come from, not something
+# the amp needs. The USB cable to the amp works with no network at all, and
+# the server must come up regardless so the AP has something to serve.
+Wants=network.target
+After=network.target
+
+# Do not give up. The default (5 starts in 10s) would leave the server dead
+# for good after a transient failure, which is the one outcome that cannot
+# be recovered from without a laptop.
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=katana
+Group=katana
+# audio for ALSA (the MIDI port lives there), plugdev for the raw USB device.
+SupplementaryGroups=audio plugdev
+
+WorkingDirectory=/opt/katana
+ExecStart=/opt/katana/venv/bin/python -m server.app --host 0.0.0.0 --port 8000
+
+# The amp being absent is normal - it powers up with the rig, and the server
+# reconnects on its own. Restart is for the server dying, which on a Pi in a
+# gig bag has to be self-healing: nobody is going to ssh in mid-set.
+Restart=always
+RestartSec=2
+
+# Log to the journal; there is no screen to print to.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katana
+
+# Modest hardening. Not a security boundary - it runs on a private AP - but
+# it costs nothing and keeps a bug from writing outside its own tree.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+# tracks/ and patches/ live under the working directory and must stay writable.
+ReadWritePaths=/opt/katana
+
+[Install]
+WantedBy=multi-user.target

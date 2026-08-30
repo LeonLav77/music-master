@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Bring up the amp's own wifi, alongside whatever network it is a client of.
+#
+#     ap-up              create the profile if needed, then raise it
+#
+# The AP runs on its own virtual interface (ap0) rather than on wlan0. That
+# is the whole trick: `nmcli con up` on wlan0 takes the device over, which
+# drops the home wifi - one radio, one connection. A second virtual interface
+# on the same phy lets the chip be an access point and a client at once.
+#
+# The two share a channel, because there is only one radio. That costs some
+# throughput at home and nothing at a venue, where there is no other network
+# to be a client of.
+#
+# Runs at boot from katana-ap.service, and is safe to run again by hand.
+
+set -euo pipefail
+
+CON=katana-ap
+SSID="${AP_SSID:-gitra}"
+WIFI_DEV="${AP_WIFI_DEV:-wlan0}"
+AP_DEV="${AP_DEV:-ap0}"
+
+# The AP's own address. 192.168.4.x is the convention on Pi access points and
+# is unlikely to collide with a venue's network - which matters, because the
+# Pi may be associated to that network on the same radio.
+ADDR="${AP_ADDR:-192.168.4.1/24}"
+
+# Settings live here so they survive a reinstall (which replaces /opt/katana).
+CONF=/etc/default/katana-ap
+[ -r "$CONF" ] && . "$CONF"
+
+log() { printf 'katana-ap: %s\n' "$*"; }
+
+command -v nmcli >/dev/null || { log "nmcli not found"; exit 1; }
+
+# Started at boot, this can easily run before NM has finished enumerating
+# devices, and a create against a device NM does not know about yet fails.
+for _ in $(seq 1 30); do
+  nmcli -t -f RUNNING general 2>/dev/null | grep -q running && break
+  sleep 1
+done
+
+# The radio is blocked until a country is set, and a blocked radio produces
+# an AP that silently never appears.
+if command -v rfkill >/dev/null && rfkill list wifi 2>/dev/null | grep -q "Soft blocked: yes"; then
+  log "wifi is rfkill-blocked, unblocking"
+  rfkill unblock wifi || true
+fi
+
+# --- the virtual interface -------------------------------------------------
+
+# Does the chip actually support a second interface? Broadcom's firmware on
+# the Pi does, but say so plainly rather than failing obscurely if not.
+IW=$(command -v iw || echo /usr/sbin/iw)
+
+if ! "$IW" dev "$AP_DEV" info >/dev/null 2>&1; then
+  log "creating $AP_DEV on the same radio as $WIFI_DEV"
+  if ! "$IW" dev "$WIFI_DEV" interface add "$AP_DEV" type __ap 2>/dev/null; then
+    log "could not create $AP_DEV - this chip may not do AP and client at once"
+    log "falling back to running the AP on $WIFI_DEV (this drops the client wifi)"
+    AP_DEV="$WIFI_DEV"
+  else
+    # A fixed MAC, derived from the real one with the locally-administered
+    # bit set. Without this the interface gets a random address on every
+    # boot, and phones treat each one as a brand-new network.
+    mac=$(cat "/sys/class/net/$WIFI_DEV/address" 2>/dev/null || echo "")
+    if [ -n "$mac" ]; then
+      first=$(printf '%d' "0x${mac%%:*}")
+      newfirst=$(printf '%02x' $(( first | 0x02 )))
+      ip link set dev "$AP_DEV" address "$newfirst:${mac#*:}" 2>/dev/null || true
+    fi
+    ip link set "$AP_DEV" up 2>/dev/null || true
+  fi
+fi
+
+# --- the profile -----------------------------------------------------------
+
+if ! nmcli -t -f NAME con show 2>/dev/null | grep -qx "$CON"; then
+  log "creating the $CON profile (ssid: $SSID on $AP_DEV)"
+
+  nmcli con add type wifi ifname "$AP_DEV" con-name "$CON" \
+    autoconnect yes ssid "$SSID"
+
+  nmcli con modify "$CON" \
+    802-11-wireless.mode ap \
+    802-11-wireless.band bg \
+    ipv4.method shared \
+    ipv4.addresses "$ADDR" \
+    ipv6.method disabled
+
+  # An open network, by choice: no password to type on a phone in the dark.
+  # Anyone in range can join and control the amp, which is why the settings
+  # page authenticates separately rather than trusting the network.
+  #
+  # The security setting has to be *removed*, not set to none: in NM's model
+  # `key-mgmt none` means "WEP with no key given", so the AP then refuses to
+  # start, asking for a WEP secret.
+  nmcli con modify "$CON" remove 802-11-wireless-security 2>/dev/null || true
+
+  # Never steal the radio from a client connection. The AP is on its own
+  # interface, so this only matters if we fell back to wlan0 above.
+  nmcli con modify "$CON" connection.autoconnect-priority 10
+  nmcli con modify "$CON" connection.autoconnect-retries 0
+fi
+
+# Keep the profile pointing at whichever device we settled on - the fallback
+# above can change it between runs.
+nmcli con modify "$CON" connection.interface-name "$AP_DEV" 2>/dev/null || true
+
+if nmcli -t -f NAME con show --active 2>/dev/null | grep -qx "$CON"; then
+  log "already up"
+else
+  log "raising $CON on $AP_DEV"
+  nmcli con up "$CON"
+fi
+
+ip=$(nmcli -g IP4.ADDRESS con show "$CON" 2>/dev/null | cut -d/ -f1 | head -1)
+log "ssid '$SSID' at ${ip:-${ADDR%%/*}}  ->  http://${ip:-${ADDR%%/*}}:8000"
+
+# Say what the client side is doing too - the point of ap0 is that both run,
+# and this is the line that proves it.
+client=$(nmcli -t -f NAME,DEVICE con show --active 2>/dev/null |
+         grep ":$WIFI_DEV\$" | cut -d: -f1 | head -1)
+[ -n "$client" ] && log "also a client of '$client' on $WIFI_DEV" \
+                 || log "not joined to any other network"

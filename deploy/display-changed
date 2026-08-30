@@ -1,0 +1,32 @@
+#!/bin/sh
+# Start or stop the kiosk to match whether a screen is plugged in.
+#
+# Run from udev on any DRM change event. udev gives the event but not a
+# usable answer to "is a monitor attached?", so this reads the connector
+# status out of sysfs, which is the same answer X will get.
+#
+# Kept deliberately tiny and fast: udev serialises RUN+= commands and kills
+# anything slow, so this only decides and hands off to systemd with --no-block.
+
+set -eu
+
+# Every connector on every card. "connected" means a display is on the other
+# end; "disconnected" is an empty port. Checking all of them rather than a
+# named HDMI-1 is what makes this work for HDMI and DSI panels alike.
+attached=no
+for status in /sys/class/drm/card*/status; do
+  [ -e "$status" ] || continue
+  if [ "$(cat "$status" 2>/dev/null)" = "connected" ]; then
+    attached=yes
+    break
+  fi
+done
+
+if [ "$attached" = yes ]; then
+  # --no-block: udev must not wait for X and Chromium to come up.
+  systemctl --no-block start katana-kiosk.service
+else
+  # Screen pulled: stop the kiosk so an X server is not left painting at a
+  # display that is gone. The server and the AP are untouched.
+  systemctl --no-block stop katana-kiosk.service
+fi

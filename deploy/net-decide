@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# Choose between joining a known wifi network and being one.
+#
+#     net-decide            look around and pick
+#     net-decide --ap       force the access point on
+#     net-decide --client   force a client connection, if one is in range
+#     net-decide --rescan   look again even if the AP has clients on it
+#
+# One or the other, never both. The radio can technically do AP and client at
+# once, but only on a single shared channel - and when the two disagree about
+# which channel that is, the driver drops the client connection to honour the
+# AP. That failure looks exactly like the Pi dying: no network, no screen, no
+# way in. Picking one is worth more than the convenience of having both.
+#
+# The rule: if a network we know is in range, join it. Otherwise be the
+# access point. At home that means the house wifi; at a venue, with nothing
+# known around, the amp's own network comes up instead.
+#
+# Runs at boot from katana-net.service, and again whenever the client
+# connection goes away.
+
+set -euo pipefail
+
+CON=katana-ap
+SSID="${AP_SSID:-gitra}"
+WIFI_DEV="${AP_WIFI_DEV:-wlan0}"
+ADDR="${AP_ADDR:-192.168.4.1/24}"
+
+CONF=/etc/default/katana-ap
+[ -r "$CONF" ] && . "$CONF"
+
+log() { printf 'katana-net: %s\n' "$*"; }
+
+command -v nmcli >/dev/null || { log "nmcli not found"; exit 1; }
+
+for _ in $(seq 1 30); do
+  nmcli -t -f RUNNING general 2>/dev/null | grep -q running && break
+  sleep 1
+done
+
+if command -v rfkill >/dev/null && rfkill list wifi 2>/dev/null | grep -q "Soft blocked: yes"; then
+  rfkill unblock wifi || true
+fi
+
+
+# --- what do we know, and what is out there? -------------------------------
+
+# Saved wifi profiles, minus our own access point.
+known() {
+  nmcli -t -f NAME,TYPE con show 2>/dev/null |
+    awk -F: '$2 ~ /wireless/ { print $1 }' |
+    grep -vx "$CON" || true
+}
+
+# SSIDs in range. A scan needs the radio, so it cannot be done while the AP
+# is running - which is why the AP is torn down before scanning, not after.
+in_range() {
+  nmcli -t -f SSID dev wifi list --rescan yes 2>/dev/null |
+    sed 's/\\:/:/g' | grep -v '^$' || true
+}
+
+# A saved profile's SSID is not always its name, so ask for it properly.
+ssid_of() {
+  nmcli -g 802-11-wireless.ssid con show "$1" 2>/dev/null || echo "$1"
+}
+
+ap_is_up()     { nmcli -t -f NAME con show --active 2>/dev/null | grep -qx "$CON"; }
+client_is_up() { nmcli -t -f DEVICE,TYPE con show --active 2>/dev/null |
+                   grep -q "^$WIFI_DEV:802-11-wireless$" && ! ap_is_up; }
+
+
+# --- the two states --------------------------------------------------------
+
+ensure_ap_profile() {
+  nmcli -t -f NAME con show 2>/dev/null | grep -qx "$CON" && return 0
+
+  log "creating the $CON profile (ssid: $SSID)"
+  nmcli con add type wifi ifname "$WIFI_DEV" con-name "$CON" \
+    autoconnect no ssid "$SSID" >/dev/null
+
+  nmcli con modify "$CON" \
+    802-11-wireless.mode ap \
+    802-11-wireless.band bg \
+    ipv4.method shared \
+    ipv4.addresses "$ADDR" \
+    ipv6.method disabled
+
+  # Open network, by choice. The security setting has to be *removed*, not
+  # set to none: in NM's model `key-mgmt none` means "WEP with no key", and
+  # the AP then refuses to start, asking for a WEP secret.
+  nmcli con modify "$CON" remove 802-11-wireless-security 2>/dev/null || true
+
+  # autoconnect stays off: this script decides when the AP runs, and NM
+  # racing it at boot is how you end up with both fighting over the radio.
+  nmcli con modify "$CON" connection.autoconnect no
+}
+
+go_ap() {
+  ensure_ap_profile
+  ap_is_up && { log "access point already up"; return 0; }
+  log "no known network in range - becoming '$SSID'"
+  nmcli con up "$CON" >/dev/null
+  log "  http://${ADDR%%/*}:8000"
+}
+
+go_client() {
+  local target="$1"
+  log "joining '$target'"
+  ap_is_up && nmcli con down "$CON" >/dev/null 2>&1 || true
+  nmcli con up "$target" >/dev/null
+  local ip
+  ip=$(nmcli -g IP4.ADDRESS con show "$target" 2>/dev/null | cut -d/ -f1 | head -1)
+  log "  http://${ip:-$(hostname).local}:8000"
+}
+
+
+# --- decide ----------------------------------------------------------------
+
+case "${1:-}" in
+  --ap)
+    nmcli -t -f DEVICE,TYPE con show --active 2>/dev/null |
+      grep -q "^$WIFI_DEV:802-11-wireless$" &&
+      nmcli dev disconnect "$WIFI_DEV" >/dev/null 2>&1 || true
+    go_ap
+    exit 0
+    ;;
+  --client)
+    force_client=yes
+    ;;
+esac
+
+# Running as the access point with someone connected? Leave well alone.
+# Scanning means dropping the AP for a couple of seconds, and doing that on
+# a timer would disconnect the phone that is using it - repeatedly, forever.
+# A venue where nothing known is in range is the normal case here, so there
+# is usually nothing to find anyway.
+if [ "${force_client:-no}" != yes ] && ap_is_up && [ "${1:-}" != --rescan ]; then
+  clients=$(ip neigh show dev "$WIFI_DEV" 2>/dev/null | grep -c REACHABLE || true)
+  if [ "${clients:-0}" -gt 0 ]; then
+    log "access point up with $clients client(s) - not disturbing it"
+    exit 0
+  fi
+fi
+
+# Already a client of something, and not asked to change? Leave it alone.
+# Re-scanning would mean dropping the connection we are probably being run
+# over, for no gain.
+if [ "${force_client:-no}" != yes ] && client_is_up; then
+  current=$(nmcli -t -f NAME,DEVICE con show --active | grep ":$WIFI_DEV\$" |
+            cut -d: -f1 | head -1)
+  log "already joined to '$current' - nothing to do"
+  exit 0
+fi
+
+# Scanning needs the radio to itself, so stand the AP down first. If nothing
+# is found we put it straight back up, and the gap is a few seconds.
+was_ap=no
+if ap_is_up; then
+  was_ap=yes
+  log "scanning (the access point drops for a moment)"
+  nmcli con down "$CON" >/dev/null 2>&1 || true
+  sleep 2
+fi
+
+visible=$(in_range)
+target=""
+while IFS= read -r profile; do
+  [ -n "$profile" ] || continue
+  ssid=$(ssid_of "$profile")
+  if printf '%s\n' "$visible" | grep -qxF "$ssid"; then
+    target="$profile"
+    break
+  fi
+done <<< "$(known)"
+
+if [ -n "$target" ]; then
+  go_client "$target"
+else
+  [ "$was_ap" = yes ] && log "nothing known in range, staying as the access point"
+  go_ap
+fi

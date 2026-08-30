@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# Prepare a freshly-flashed SD card so the Pi installs itself on first boot.
+#
+#     ./deploy/bootstrap /media/you/bootfs
+#
+# Run this on your laptop, on the card, after Raspberry Pi Imager and before
+# the first boot. Then put the card in the Pi, power it on, and wait. No SSH,
+# no typing, no screen.
+#
+# What it does: copies this project to the card's boot partition and arranges
+# for `firstboot` to run once.
+#
+# There are two first-boot mechanisms in the wild and the card decides which:
+#
+#   cloud-init   newer Pi OS images carry user-data/network-config on the boot
+#                partition. Imager's settings dialog does not offer hostname
+#                or wifi for these, so this script writes them itself.
+#
+#   firstrun.sh  the older hook, which Imager writes when you fill in its
+#                settings. Ours is prepended, because Imager's own script ends
+#                by deleting itself - anything appended after that never runs.
+#
+# Both are handled; the card is inspected to decide.
+
+set -euo pipefail
+
+BOOT="${1:-}"
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+
+die() { printf '\n%s\n\n' "$*" >&2; exit 1; }
+
+[ -n "$BOOT" ] || die "usage: ./deploy/bootstrap /path/to/the/card's/boot/partition
+
+Flash the card with Raspberry Pi Imager first, setting hostname, wifi and
+SSH in its settings. Then plug the card back in and point this at the boot
+partition - the small FAT32 one, usually mounted as 'bootfs'."
+
+[ -d "$BOOT" ] || die "no such directory: $BOOT"
+
+# The boot partition has these; a wrong path is otherwise easy to miss until
+# the Pi silently does nothing.
+[ -f "$BOOT/config.txt" ] || [ -f "$BOOT/cmdline.txt" ] || die \
+  "$BOOT does not look like a Pi boot partition (no config.txt or cmdline.txt).
+
+Point this at the small FAT32 partition, not the big ext4 one."
+
+echo "==> Copying the project to $BOOT/katana"
+rm -rf "${BOOT:?}/katana"
+mkdir -p "$BOOT/katana"
+
+# FAT32 has no permission bits, no symlinks and an 8.3-adjacent character set.
+# Excluding venv/ and .git/ keeps it to a few hundred KB of plain files, which
+# is what survives that filesystem intact.
+if command -v rsync >/dev/null; then
+  rsync -a --exclude venv/ --exclude .git/ --exclude __pycache__/ \
+        --exclude tracks/ --exclude '*.wav' "$SRC"/ "$BOOT/katana"/
+else
+  (cd "$SRC" && tar --exclude=venv --exclude=.git --exclude=__pycache__ \
+     --exclude=tracks --exclude='*.wav' -cf - .) | tar -xf - -C "$BOOT/katana"
+fi
+
+echo "==> Planting the first-boot hook"
+
+# cloud-init images ship these two files on the boot partition. Their presence
+# is what tells us which mechanism this card uses.
+if [ -f "$BOOT/user-data" ] && [ -f "$BOOT/meta-data" ]; then
+  echo "    this card uses cloud-init"
+
+  if grep -q '^hostname: gitra' "$BOOT/user-data" 2>/dev/null; then
+    echo "    already configured, leaving it alone"
+  else
+    # Keep what was there. If the install goes wrong, the stock file is the
+    # thing to compare against.
+    [ -f "$BOOT/user-data" ] && cp "$BOOT/user-data" "$BOOT/user-data.orig"
+    [ -f "$BOOT/network-config" ] && cp "$BOOT/network-config" "$BOOT/network-config.orig"
+
+    cp "$SRC/deploy/cloud-init/user-data" "$BOOT/user-data"
+    cp "$SRC/deploy/cloud-init/network-config" "$BOOT/network-config"
+
+    echo "    wrote user-data and network-config (originals kept as .orig)"
+  fi
+
+  sync
+
+  cat <<EOF
+
+==> Before you eject: two things to fill in
+
+  On the card's boot partition:
+
+    user-data       passwd: CHANGEME      <- your login password
+                    (generate one with:  openssl passwd -6)
+
+    network-config  password: "CHANGEME"  <- your wifi password
+
+  The SSH key is already in there, so you can log in without the password if
+  you leave it. The wifi password is not optional - without it the Pi never
+  gets online and the install cannot run.
+
+EOF
+  exit 0
+fi
+
+echo "    this card uses firstrun.sh"
+
+# firstrun.sh runs as root on the first boot and is then removed by Pi OS.
+# Imager may already have written one to set the hostname and wifi; appending
+# keeps those and adds ours. Our part only installs a systemd unit and gets
+# out of the way - the real work happens in that unit, where it can take an
+# hour and log properly, rather than inside firstrun.sh where a slow command
+# would stall the boot.
+MARK="# --- katana ---"
+RUN="$BOOT/firstrun.sh"
+
+if [ -f "$RUN" ] && grep -q "$MARK" "$RUN"; then
+  echo "    already planted, leaving it alone"
+else
+  # A fresh file needs a shebang; an existing one from Imager already has one.
+  # Imager's script ends in `rm -f /boot/firstrun.sh` and friends, so ours has
+  # to go before that - hence the prepend rather than a plain append.
+  if [ -f "$RUN" ]; then
+    body=$(cat "$RUN")
+    shebang=$(printf '%s\n' "$body" | head -1)
+    rest=$(printf '%s\n' "$body" | tail -n +2)
+  else
+    shebang='#!/bin/bash'
+    rest=''
+  fi
+
+  {
+    printf '%s\n' "$shebang"
+    cat <<'HOOK'
+
+# --- katana ---
+# Install the first-boot unit, then let systemd do the slow part. Nothing
+# heavy here: firstrun.sh runs inside the boot, and a long command would just
+# stall it.
+for d in /boot/firmware /boot; do
+  if [ -f "$d/katana/deploy/systemd/katana-firstboot.service" ]; then
+    install -m 644 "$d/katana/deploy/systemd/katana-firstboot.service" \
+      /etc/systemd/system/katana-firstboot.service
+    # The unit's ExecStart is written for /boot/firmware; fix it up if this
+    # image still mounts the boot partition at /boot.
+    [ "$d" = /boot ] && sed -i 's|/boot/firmware/|/boot/|' \
+      /etc/systemd/system/katana-firstboot.service
+    chmod +x "$d"/katana/deploy/firstboot "$d"/katana/deploy/install.sh 2>/dev/null || true
+    systemctl enable katana-firstboot.service
+    break
+  fi
+done
+# --- end katana ---
+HOOK
+    printf '%s\n' "$rest"
+  } > "$RUN.new"
+
+  mv "$RUN.new" "$RUN"
+  chmod +x "$RUN" 2>/dev/null || true
+  echo "    planted in $RUN"
+fi
+
+sync
+
+cat <<EOF
+
+==> Ready
+
+  Put the card in the Pi and power it on. It will install itself - several
+  minutes, mostly compiling rtmidi. It needs the wifi you set in Imager,
+  because the install pulls from apt and PyPI.
+
+  Watch it, if you like:      ssh <you>@\$(hostname).local  then
+                              tail -f /boot/firmware/katana-install.log
+
+  If it seems dead: power off, put the card in this laptop, and read
+  katana-install.log on the boot partition. Every failure says what to do.
+
+  When it is done:            http://gitra.local:8000
+
+EOF

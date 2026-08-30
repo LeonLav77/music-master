@@ -1,0 +1,21 @@
+# Start the kiosk when a display is connected, so plugging a screen in is
+# enough - no reboot, no login. Without this the kiosk would be tied to
+# graphical.target, which is decided at boot: connect a screen to a running
+# headless Pi and nothing would happen until you power-cycled it.
+#
+# DRM emits a "change" event on the card device when a connector is plugged
+# or unplugged. It does not say *which* connector in a way that is stable
+# across HDMI and DSI, so the rule fires on any change and lets the helper
+# decide whether a display is actually connected. That is what keeps this
+# working for an HDMI panel and a DSI ribbon without knowing which is in use.
+#
+# Install to /etc/udev/rules.d/ and reload:
+#     sudo udevadm control --reload && sudo udevadm trigger
+
+ACTION=="change", SUBSYSTEM=="drm", KERNEL=="card[0-9]", \
+    RUN+="/opt/katana/deploy/display-changed"
+
+# A display present at boot never emits a change event - it is simply there
+# from the start. This catches that case.
+ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card[0-9]", \
+    RUN+="/opt/katana/deploy/display-changed"

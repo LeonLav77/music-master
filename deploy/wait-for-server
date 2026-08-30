@@ -1,0 +1,24 @@
+#!/bin/sh
+# Block until the server answers, or until the timeout runs out.
+#
+#     wait-for-server [seconds]     default 30
+#
+# Used by the kiosk so the first thing on screen is the control surface
+# rather than a connection error. Exits 0 either way: a server that is slow
+# or broken should still get a browser on the screen, because a visible error
+# page is diagnosable from across the room and a black screen is not.
+
+timeout="${1:-30}"
+url="${KIOSK_URL:-http://localhost:8000}/api/status"
+
+i=0
+while [ "$i" -lt "$timeout" ]; do
+  if curl -sf -o /dev/null --max-time 2 "$url"; then
+    exit 0
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+
+echo "server did not answer within ${timeout}s - starting anyway" >&2
+exit 0

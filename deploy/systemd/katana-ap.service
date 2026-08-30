@@ -1,0 +1,32 @@
+[Unit]
+Description=Katana access point (the amp's own wifi)
+Documentation=https://github.com/LeonLav77/boss_test
+
+# NetworkManager owns the radio, so there is nothing to do until it is up.
+Requires=NetworkManager.service
+After=NetworkManager.service
+
+# Deliberately independent of katana.service. The access point is how you
+# reach the Pi to find out why something is broken - tying it to the thing
+# that might be broken would take away the only way in.
+Before=katana.service
+
+ConditionPathExists=/opt/katana/deploy/ap-up
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/opt/katana/deploy/ap-up
+
+# Bringing the AP down on stop would drop your phone whenever the unit is
+# restarted, including during an update. It stays up; `ap-down` is there for
+# when you actually want it gone.
+ExecStop=/bin/true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katana-ap
+
+[Install]
+WantedBy=multi-user.target

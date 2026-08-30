@@ -1,0 +1,27 @@
+# Katana amp controller - home wifi, for the install only.
+#
+# The install pulls from apt and PyPI, so the Pi needs the internet once. At a
+# venue it will not have any: the always-on access point is what makes it
+# reachable there, and that is set up by the installer, not here.
+
+version: 2
+
+ethernets:
+  eth0:
+    dhcp4: true
+    optional: true
+
+wifis:
+  wlan0:
+    dhcp4: true
+    # optional: false - cloud-init must wait for wifi before running the
+    # install, which needs the network. Marking it optional lets the boot
+    # race ahead and the install then fails on a DNS lookup.
+    optional: false
+    # Without a regulatory domain the radio stays rfkill-blocked and never
+    # associates. HR = Croatia.
+    regulatory-domain: HR
+    access-points:
+      "kardas":
+        # !!! REPLACE THIS !!!  Your wifi password, in quotes.
+        password: "CHANGEME"

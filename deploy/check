@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# What is working and what is not. Run this first when something is wrong.
+#
+#     ./deploy/check
+#
+# Written for the case where there is no screen and no internet: every check
+# says what to do about a failure, because looking it up is not an option.
+
+PORT="${PORT:-8000}"
+pass=0 fail=0
+
+ok()   { printf '  \033[32mok\033[0m    %s\n' "$1"; pass=$((pass+1)); }
+bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; [ -n "${2:-}" ] && printf '        %s\n' "$2"; fail=$((fail+1)); }
+note() { printf '  \033[33m--\033[0m    %s\n' "$1"; }
+
+echo
+echo "Service"
+if systemctl is-active --quiet katana; then
+  ok "katana.service running"
+else
+  bad "katana.service not running" "journalctl -u katana -n 50"
+fi
+systemctl is-enabled --quiet katana \
+  && ok "starts at boot" \
+  || bad "will NOT start at boot" "sudo systemctl enable katana"
+
+echo
+echo "Server"
+if curl -sf -o /dev/null --max-time 3 "http://localhost:$PORT/api/status"; then
+  ok "API answering on :$PORT"
+  status=$(curl -s --max-time 3 "http://localhost:$PORT/api/status")
+  case "$status" in
+    *'"connected":true'*)
+      ok "amp connected ($(echo "$status" | grep -o '"parameters":[0-9]*' | cut -d: -f2) parameters cached)" ;;
+    *)
+      note "amp not answering - is it powered on and the USB cable in?"
+      note "the server retries every 2s on its own; nothing to restart" ;;
+  esac
+else
+  bad "API not answering on :$PORT" "systemctl status katana"
+fi
+curl -sf -o /dev/null --max-time 3 "http://localhost:$PORT/" \
+  && ok "web UI being served" \
+  || bad "web UI not served" "is web/ present in /opt/katana?"
+
+echo
+echo "Amp"
+if [ -e /dev/snd/seq ]; then
+  # Prefer the installed venv as the service user; fall back to whatever
+  # python is at hand, so this is still useful on a dev machine or before
+  # install.sh has run. A missing interpreter is not a missing amp.
+  count_ports='from katana_amp.katana import find_ports; print(len(find_ports()))'
+  if [ -x /opt/katana/venv/bin/python ] && id katana >/dev/null 2>&1; then
+    ports=$(su -s /bin/sh katana -c \
+      "cd /opt/katana && ./venv/bin/python -c '$count_ports'" 2>/dev/null)
+  elif [ -x ./venv/bin/python ]; then
+    ports=$(./venv/bin/python -c "$count_ports" 2>/dev/null)
+  else
+    ports=skip
+  fi
+  case "$ports" in
+    skip) note "cannot check MIDI ports here (no venv)" ;;
+    ''|0) note "no Katana MIDI port - amp off, or USB not connected" ;;
+    *)    ok "$ports Katana MIDI port(s) visible" ;;
+  esac
+else
+  bad "no ALSA sequencer (/dev/snd/seq)" "is snd-seq loaded?"
+fi
+
+echo
+echo "Display"
+attached=no
+for s in /sys/class/drm/card*/status; do
+  [ -e "$s" ] || continue
+  if [ "$(cat "$s" 2>/dev/null)" = connected ]; then
+    attached=yes
+    note "connected: $(basename "$(dirname "$s")")"
+  fi
+done
+if [ "$attached" = yes ]; then
+  systemctl is-active --quiet katana-kiosk \
+    && ok "screen attached, kiosk running" \
+    || bad "screen attached but kiosk not running" "journalctl -u katana-kiosk -n 50"
+else
+  note "no screen attached (headless - this is fine)"
+  systemctl is-active --quiet katana-kiosk \
+    && bad "kiosk running with no screen" "sudo systemctl stop katana-kiosk"
+fi
+[ -f /etc/udev/rules.d/99-katana-display.rules ] \
+  && ok "hot-plug rule installed" \
+  || bad "hot-plug rule missing" "plugging a screen in will do nothing"
+
+echo
+echo "Aux deck"
+for bin in ffmpeg ffprobe pw-play; do
+  command -v "$bin" >/dev/null \
+    && ok "$bin present" \
+    || bad "$bin missing" "sudo apt install ${bin%%p*}"
+done
+
+echo
+echo "Network"
+ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -n "$ip" ] && ok "address $ip  ->  http://$ip:$PORT" || note "no IP address"
+ok "hostname $(hostname).local"
+
+echo
+printf '%d ok, %d failed\n\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]

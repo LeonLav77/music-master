@@ -11,7 +11,8 @@ relative URLs and there is nothing to configure - which is what makes
 
 The halves stay separable in the code rather than in the deployment:
 `server.api` is the amp and knows nothing about a UI, `server.audio` plays
-backing tracks and knows nothing about MIDI, `server.ui` is a static mount
+backing tracks and knows nothing about MIDI, `server.wifi` manages networks
+and knows nothing about either, `server.ui` is a static mount
 and knows nothing about either. This module is the only place that knows
 about all three.
 """
@@ -20,7 +21,7 @@ import contextlib
 
 from fastapi import FastAPI
 
-from server import api, audio, ui
+from server import api, audio, ui, wifi
 
 
 @contextlib.asynccontextmanager
@@ -47,6 +48,7 @@ def create_app(serve_ui=True):
 
     app.include_router(api.router)
     app.include_router(audio.router)
+    app.include_router(wifi.router)
 
     # Last: the UI mounts at "/" and would otherwise shadow the API.
     # A missing web/ is a broken checkout, not something to paper over -

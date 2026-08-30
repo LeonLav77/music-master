@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Take the amp's wifi down.
+#
+#     ap-down            stop it for now; it comes back at the next boot
+#     ap-down --forget   stop it and delete the profile
+#
+# Rarely needed. It exists for the case where the AP is interfering with
+# something - the shared radio can make the home wifi slower - and for
+# undoing the whole thing cleanly.
+
+set -euo pipefail
+
+CON=katana-ap
+
+if nmcli -t -f NAME con show --active 2>/dev/null | grep -qx "$CON"; then
+  nmcli con down "$CON"
+  echo "katana-ap: down"
+else
+  echo "katana-ap: not running"
+fi
+
+if [ "${1:-}" = "--forget" ]; then
+  nmcli con delete "$CON" 2>/dev/null && echo "katana-ap: profile deleted"
+  # Otherwise the unit would recreate it on the next boot.
+  systemctl disable katana-ap.service 2>/dev/null || true
+  echo "katana-ap: disabled at boot (systemctl enable katana-ap to undo)"
+fi

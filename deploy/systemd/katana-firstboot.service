@@ -1,0 +1,35 @@
+[Unit]
+Description=Katana first-boot install
+Documentation=https://github.com/LeonLav77/boss_test
+
+# Needs the network up and actually online: the install pulls packages from
+# apt and PyPI. network-online.target is the one that waits for a usable
+# connection rather than merely a configured interface.
+Wants=network-online.target
+After=network-online.target
+
+# Once the install has run, the stamp file makes this a no-op for ever. The
+# unit disables itself as well; the stamp is the belt to that braces, for the
+# case where the disable does not survive whatever went wrong.
+ConditionPathExists=!/var/lib/katana/.installed
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Compiling rtmidi on a Zero 2 W is slow. The default 90s timeout would kill
+# the install halfway and leave a half-built venv, which is worse than slow.
+TimeoutStartSec=3600
+
+# Run through bash rather than executing the file directly: the script lives
+# on the FAT32 boot partition, which has no permission bits at all, so it can
+# never be executable no matter what chmod claims. Naming the interpreter is
+# the only thing that works there.
+ExecStart=/bin/bash /boot/firmware/katana/deploy/firstboot
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katana-firstboot
+
+[Install]
+WantedBy=multi-user.target

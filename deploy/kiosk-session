@@ -1,0 +1,70 @@
+#!/bin/sh
+# The X session: one browser, full screen, nothing else.
+#
+# Run by xinit from katana-kiosk.service. There is no window manager - a
+# single full-screen window does not need one, and leaving it out removes a
+# package, a config file and a thing that can crash.
+
+set -eu
+
+# Never blank or sleep. The default is a screen that goes dark after ten
+# minutes, which on a panel with no keyboard looks exactly like a crash.
+xset s off
+xset s noblank
+xset -dpms
+
+# Hide the pointer. It is a touchscreen; an arrow parked mid-screen is just
+# something to smudge at. Skipped if unavailable so the kiosk still starts.
+command -v unclutter >/dev/null 2>&1 && unclutter -idle 0 -root &
+
+# Screen rotation and touch mapping for panels that come up sideways. Set
+# KIOSK_ROTATE=left|right|inverted|normal in /etc/default/katana-kiosk.
+# Left unset by default: guessing wrong turns a working screen sideways, and
+# the right value depends on the panel, which we cannot know from here.
+[ -r /etc/default/katana-kiosk ] && . /etc/default/katana-kiosk
+
+if [ -n "${KIOSK_ROTATE:-}" ]; then
+  output=$(xrandr --query | awk '/ connected/{print $1; exit}')
+  if [ -n "$output" ]; then
+    xrandr --output "$output" --rotate "$KIOSK_ROTATE" || true
+
+    # Rotating the picture does not rotate the digitiser: without this the
+    # touch lands in the wrong place, which is worse than no rotation. The
+    # matrices map touch coordinates through the same rotation.
+    case "$KIOSK_ROTATE" in
+      left)     matrix="0 -1 1 1 0 0 0 0 1" ;;
+      right)    matrix="0 1 0 -1 0 1 0 0 1" ;;
+      inverted) matrix="-1 0 1 0 -1 1 0 0 1" ;;
+      *)        matrix="1 0 0 0 1 0 0 0 1" ;;
+    esac
+    # Every pointer that looks like a touch device, by name.
+    xinput --list --name-only 2>/dev/null | grep -i -E "touch|ft5406|goodix" |
+      while IFS= read -r dev; do
+        xinput set-prop "$dev" "Coordinate Transformation Matrix" $matrix || true
+      done
+  fi
+fi
+
+# Chromium is packaged as chromium-browser on Pi OS and chromium elsewhere.
+BROWSER=$(command -v chromium-browser || command -v chromium || true)
+[ -n "$BROWSER" ] || { echo "no chromium found" >&2; exit 1; }
+
+KIOSK_URL="${KIOSK_URL:-http://localhost:8000}"
+
+# --kiosk is full screen with no chrome. The rest suppress everything that
+# expects a person with a keyboard: no restore-session bubble after the power
+# is pulled, no first-run wizard, no update or default-browser nagging.
+exec "$BROWSER" \
+  --kiosk \
+  --app="$KIOSK_URL" \
+  --user-data-dir=/var/lib/katana/chromium \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-features=Translate,TranslateUI \
+  --disable-pinch \
+  --overscroll-history-navigation=0 \
+  --check-for-update-interval=31536000 \
+  --noerrdialogs \
+  --autoplay-policy=no-user-gesture-required

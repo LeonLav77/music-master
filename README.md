@@ -21,6 +21,7 @@ web/
 patches/           .tsl patch files
 demo.py            command-line demo
 run                start the server (API, aux deck and UI on one port)
+deploy/            Raspberry Pi install - services, kiosk, see deploy/README.md
 vendor/            upstream reference project, for its protocol docs
 ```
 

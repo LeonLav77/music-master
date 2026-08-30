@@ -19,7 +19,7 @@ To serve the page from somewhere else (any static file server will do — it
 only needs HTTP, since ES modules do not load from `file://`), point it at
 the API with:
 
-    <script>window.KATANA_API_URL = "http://amp-pi.local:8000"</script>
+    <script>window.KATANA_API_URL = "http://gitra.local:8000"</script>
 
 placed before `js/app.js` in `index.html`.
 
