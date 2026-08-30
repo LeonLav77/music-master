@@ -71,6 +71,17 @@ class Value(BaseModel):
     value: int
 
 
+async def broadcast(message):
+    """Send a message to every connected client.
+
+    The public form of `_broadcast`, for other routers mounted alongside
+    this one: `server.audio` pushes transport state through here rather
+    than opening a second WebSocket. Nothing in this module calls it, and
+    this module still knows nothing about what the messages mean.
+    """
+    await _broadcast(message)
+
+
 async def _broadcast(message, skip=None):
     """Send to every connected client, dropping any that have gone.
 

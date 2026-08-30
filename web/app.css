@@ -784,3 +784,298 @@ textarea,
 }
 .rock-total strong { color: var(--foreground); }
 .rock-bad { color: var(--ember); font-size: 0.75rem; margin-left: 0.5rem; }
+
+/* ---- aux deck ------------------------------------------------------
+   Backing-track playback. Its own accent - warm amber - so that a
+   playing track never reads as an engaged pedal (signal colours) or an
+   edited patch (ember). Same plates, screws and chrome as the amp: it is
+   a second unit in the same rack, not a second application.
+   -------------------------------------------------------------------- */
+
+:root {
+  --signal-amber: oklch(0.80 0.15 68);
+}
+
+/* Page tabs in the top plate. The deck is a separate page, so switching
+   is chassis furniture rather than navigation. */
+.pagetabs { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.pagetab {
+  border-radius: 3px 3px 0 0;
+  border: 1px solid var(--metal-dark); border-bottom: none;
+  background: linear-gradient(180deg, var(--panel), var(--metal-dark));
+  padding: 0.45rem 0.8rem;
+  font-family: var(--font-mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 0.2em;
+  color: color-mix(in oklab, var(--foreground) 55%, transparent);
+}
+.pagetab.active {
+  background: linear-gradient(180deg, var(--panel-raised), var(--panel));
+  color: var(--signal-amber);
+  box-shadow: inset 0 2px 0 var(--signal-amber);
+}
+
+.dot-amber { background: var(--signal-amber); box-shadow: 0 0 12px var(--signal-amber); }
+.chip.amber { color: var(--signal-amber); border-color: color-mix(in oklab, var(--signal-amber) 45%, transparent); }
+.chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.deck-grid { display: grid; min-height: 0; flex: 1; grid-template-columns: 1fr; gap: 0.5rem; }
+@media (min-width: 1000px) {
+  .deck-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+}
+
+.deck-plate {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 0.9rem;
+  min-height: 0; min-width: 0;
+  border-radius: 6px; padding: 1rem 1.15rem;
+}
+.deck-head { display: flex; align-items: baseline; gap: 0.6rem; flex-shrink: 0; }
+.deck-title {
+  font-family: var(--font-display); font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.22em;
+}
+.deck-hint {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono); font-size: 0.55rem;
+  text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted-foreground);
+}
+.deck-hint.bad { color: var(--ember); text-transform: none; letter-spacing: 0.04em; }
+
+/* ---- now playing ---- */
+.now {
+  border-radius: 4px; border: 1px solid var(--hairline);
+  background: linear-gradient(180deg, oklch(0.13 0.01 260), var(--metal-dark));
+  padding: 0.85rem 0.9rem; display: flex; flex-direction: column; gap: 0.6rem;
+  flex-shrink: 0;
+}
+.now.live { border-color: color-mix(in oklab, var(--signal-amber) 50%, transparent); }
+.now-title {
+  font-family: var(--font-display); font-size: 0.95rem; letter-spacing: 0.04em;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.now-title.empty { color: var(--muted-foreground); }
+
+/* Scrub bar. Deliberately chunky - it is dragged with a thumb, often
+   while holding a guitar. */
+.scrub { position: relative; height: 1.5rem; cursor: pointer; touch-action: none; }
+.scrub-track {
+  position: absolute; left: 0; right: 0; top: 50%; height: 5px;
+  transform: translateY(-50%); border-radius: 3px;
+  background: var(--track); overflow: hidden;
+}
+.scrub-fill { height: 100%; background: var(--signal-amber); }
+.scrub-head {
+  position: absolute; top: 50%; height: 1rem; width: 3px;
+  transform: translate(-50%, -50%); border-radius: 2px;
+  background: var(--signal-amber); box-shadow: 0 0 10px var(--signal-amber);
+}
+.scrub.idle { cursor: default; }
+.scrub.idle .scrub-fill, .scrub.idle .scrub-head { background: var(--muted-foreground); box-shadow: none; }
+.scrub:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 3px; }
+
+.times {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.62rem; color: var(--muted-foreground); letter-spacing: 0.08em;
+}
+.times .cur { color: var(--foreground); }
+
+/* ---- transport buttons ---- */
+.tbar { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.tbtn {
+  display: grid; place-items: center; flex-shrink: 0;
+  height: 2.6rem; width: 2.6rem; border-radius: 4px;
+  border: 1px solid var(--metal-dark);
+  background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+  box-shadow: 0 3px 0 oklch(0 0 0 / 70%);
+  color: color-mix(in oklab, var(--foreground) 78%, transparent);
+}
+.tbtn:active { transform: translateY(2px); box-shadow: none; }
+.tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tbtn svg { height: 1rem; width: 1rem; }
+.tbtn.primary {
+  height: 3.1rem; width: 3.1rem;
+  color: var(--signal-amber);
+  border-color: color-mix(in oklab, var(--signal-amber) 45%, transparent);
+}
+.tbtn.primary.live {
+  box-shadow: 0 3px 0 oklch(0 0 0 / 70%), 0 0 22px color-mix(in oklab, var(--signal-amber) 40%, transparent);
+}
+.tbtn.on { color: var(--signal-amber); border-color: color-mix(in oklab, var(--signal-amber) 45%, transparent); }
+
+/* Level fader. Horizontal, unlike the amp's knobs: it is a mixing-desk
+   gesture, and it is the one control reached for mid-song. */
+.level { margin-left: auto; display: flex; align-items: center; gap: 0.55rem; min-width: 0; flex: 1; max-width: 15rem; }
+.level-label {
+  font-family: var(--font-mono); font-size: 0.55rem; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted-foreground);
+}
+.level input[type="range"] {
+  flex: 1; min-width: 0; appearance: none; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--signal-amber) var(--pct, 70%), var(--track) var(--pct, 70%));
+}
+.level input[type="range"]::-webkit-slider-thumb {
+  appearance: none; height: 16px; width: 10px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--metal-light), var(--metal-dark));
+  border: 1px solid var(--metal-dark); box-shadow: 0 1px 3px oklch(0 0 0 / 70%);
+}
+.level input[type="range"]::-moz-range-thumb {
+  height: 16px; width: 10px; border-radius: 2px; border: 1px solid var(--metal-dark);
+  background: linear-gradient(180deg, var(--metal-light), var(--metal-dark));
+}
+.level-val {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.62rem; width: 2.4rem; text-align: right; flex-shrink: 0;
+}
+.level-val.hot { color: var(--amber); }
+
+/* ---- count-in ---- */
+.countin {
+  border-radius: 4px; border: 1px dashed color-mix(in oklab, var(--signal-lime) 35%, var(--hairline));
+  background: oklch(0.13 0.01 260); padding: 0.7rem 0.8rem;
+  display: flex; flex-direction: column; gap: 0.55rem; flex-shrink: 0;
+}
+.countin.off { border-style: solid; border-color: var(--hairline); opacity: 0.72; }
+.countin-head { display: flex; align-items: center; gap: 0.6rem; }
+.countin-title {
+  font-family: var(--font-mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 0.2em; color: var(--signal-lime);
+}
+.countin.off .countin-title { color: var(--muted-foreground); }
+
+.switch {
+  margin-left: auto; position: relative; flex-shrink: 0;
+  height: 1.15rem; width: 2.2rem; border-radius: 9999px;
+  border: 1px solid var(--metal-dark); background: var(--track);
+  transition: background 160ms;
+}
+.switch.on { background: color-mix(in oklab, var(--signal-lime) 55%, var(--track)); }
+.switch::after {
+  content: ""; position: absolute; top: 1px; left: 1px;
+  height: calc(1.15rem - 4px); width: calc(1.15rem - 4px);
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--metal-light), var(--panel-raised));
+  transition: transform 160ms;
+}
+.switch.on::after { transform: translateX(1.05rem); }
+
+/* Beat lamps: the count-in made visible while it runs. */
+.pips { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.pip {
+  height: 0.55rem; width: 0.55rem; border-radius: 9999px; flex-shrink: 0;
+  border: 1px solid var(--metal-dark); background: var(--track);
+}
+.pip.downbeat { background: color-mix(in oklab, var(--signal-lime) 25%, var(--track)); }
+.pip.lit { background: var(--signal-lime); box-shadow: 0 0 10px var(--signal-lime); }
+.pips-note {
+  margin-left: auto; font-family: var(--font-mono); font-size: 0.55rem;
+  color: var(--muted-foreground); letter-spacing: 0.08em;
+}
+
+/* ---- library ---- */
+.paste-row, .search-row { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.deck-input {
+  flex: 1; min-width: 0; padding: 0.45rem 0.6rem; border-radius: 3px;
+  border: 1px solid var(--hairline); background: var(--background);
+  color: var(--foreground); font-family: var(--font-mono); font-size: 0.7rem;
+}
+.deck-input::placeholder { color: color-mix(in oklab, var(--muted-foreground) 80%, transparent); }
+
+.tracklist {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  overflow-y: auto; min-height: 0; flex: 1; padding-right: 0.2rem;
+}
+.track-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: 0.6rem; width: 100%; text-align: left;
+  border-radius: 3px; border: 1px solid var(--metal-dark);
+  background: linear-gradient(180deg, oklch(0.155 0.01 260), var(--metal-dark));
+  padding: 0.5rem 0.6rem;
+}
+.track-row:hover { border-color: color-mix(in oklab, var(--signal-amber) 40%, transparent); }
+.track-row.current {
+  border-color: color-mix(in oklab, var(--signal-amber) 60%, transparent);
+  box-shadow: inset 3px 0 0 var(--signal-amber);
+}
+.track-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.82rem;
+}
+.track-row.current .track-name { color: var(--signal-amber); }
+.track-dur {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.58rem; color: var(--muted-foreground);
+}
+.track-drop {
+  display: grid; place-items: center; height: 1.4rem; width: 1.4rem;
+  border-radius: 2px; color: var(--muted-foreground);
+}
+.track-drop:hover { color: var(--ember); }
+.track-drop svg { height: 0.75rem; width: 0.75rem; }
+
+.empty-note {
+  border: 1px dashed var(--hairline); border-radius: 4px;
+  padding: 1.25rem 1rem; text-align: center;
+  font-family: var(--font-mono); font-size: 0.65rem; line-height: 1.9;
+  color: var(--muted-foreground);
+}
+
+/* ---- routing ---- */
+.routing {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  border-radius: 6px; padding: 0.6rem 0.9rem; flex-shrink: 0;
+}
+.routing-label {
+  font-family: var(--font-mono); font-size: 0.55rem;
+  text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted-foreground);
+}
+.routing select {
+  border-radius: 3px; border: 1px solid var(--hairline);
+  background: var(--panel); color: var(--foreground);
+  font-family: var(--font-mono); font-size: 0.65rem; padding: 0.35rem 0.5rem;
+  max-width: 100%;
+}
+.routing .warn {
+  margin-left: auto; font-family: var(--font-mono); font-size: 0.58rem;
+  color: var(--amber); letter-spacing: 0.04em;
+}
+
+/* Make-up gain. Deliberately stepped rather than continuous: each change
+   rebuilds the audio and restarts the track, so a slider you could drag
+   would fire a rebuild per pixel. Five stops is enough to find the one
+   that sits right against a band. */
+.boost {
+  border-radius: 4px; border: 1px solid var(--hairline);
+  background: oklch(0.13 0.01 260); padding: 0.6rem 0.75rem;
+  display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0;
+}
+.boost.on { border-color: color-mix(in oklab, var(--signal-amber) 45%, transparent); }
+.boost-head { display: flex; align-items: baseline; gap: 0.6rem; }
+.boost-title {
+  font-family: var(--font-mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 0.2em; color: var(--muted-foreground);
+}
+.boost.on .boost-title { color: var(--signal-amber); }
+.boost-note {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono); font-size: 0.55rem; color: var(--muted-foreground);
+}
+.boost-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem; }
+.boost-step {
+  border-radius: 3px; border: 1px solid var(--metal-dark);
+  background: linear-gradient(180deg, var(--panel-raised), var(--metal-dark));
+  padding: 0.4rem 0.25rem;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.62rem; letter-spacing: 0.06em;
+  color: color-mix(in oklab, var(--foreground) 70%, transparent);
+  box-shadow: 0 2px 0 oklch(0 0 0 / 70%);
+}
+.boost-step:active { transform: translateY(1px); box-shadow: none; }
+.boost-step:disabled { opacity: 0.35; cursor: not-allowed; }
+.boost-step.active {
+  color: var(--signal-amber);
+  border-color: color-mix(in oklab, var(--signal-amber) 55%, transparent);
+  box-shadow: 0 2px 0 oklch(0 0 0 / 70%), 0 0 14px color-mix(in oklab, var(--signal-amber) 30%, transparent);
+}

@@ -4,7 +4,8 @@
 // the CDN and picks up everything registered on alpine:init.
 
 import { createKatanaStore } from "./store.js";
-import { knob, ampDial, treadle, eqPad, channelRail, wahRock } from "./components.js";
+import { knob, ampDial, treadle, eqPad, channelRail, wahRock, scrubber, tapTempo } from "./components.js";
+import { createDeckStore } from "./deck.js";
 import { transport } from "./transport.js";
 import {
   CHANNELS, FOOTSWITCHES, EQ_BANDS, labelFor,
@@ -37,16 +38,27 @@ document.addEventListener("alpine:init", () => {
   Alpine.store("katana", createKatanaStore());
   Alpine.store("katana").init();
 
+  // The deck is its own store, matching the server split: it never touches
+  // an amp parameter, and it keeps working with the amp switched off.
+  Alpine.store("deck", createDeckStore());
+  Alpine.store("deck").init();
+
   Alpine.data("knob", knob);
   Alpine.data("ampDial", ampDial);
   Alpine.data("treadle", treadle);
   Alpine.data("eqPad", eqPad);
   Alpine.data("channelRail", channelRail);
   Alpine.data("wahRock", wahRock);
+  Alpine.data("scrubber", scrubber);
+  Alpine.data("tapTempo", tapTempo);
 
   /** The whole desk: layout-level state only. */
   Alpine.data("desk", () => ({
     openBlock: null,
+    // Which half of the rig is on screen. The deck is a separate page
+    // rather than another panel: it is a different job, and the amp
+    // surface is already full at the sizes this runs on.
+    page: "amp",
     channels: CHANNELS,
     footswitches: FOOTSWITCHES,
     eqBands: EQ_BANDS,
@@ -61,6 +73,7 @@ document.addEventListener("alpine:init", () => {
     titles: BLOCK_TITLES,
 
     get k() { return Alpine.store("katana"); },
+    get d() { return Alpine.store("deck"); },
     get blocks() { return buildBlocks(this.k); },
     get glowing() { return this.k.bool("bright") || this.k.dirty; },
     tileColor(label) { return TILE_COLOR[label] ?? "coral"; },

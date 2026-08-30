@@ -3,3 +3,4 @@ python-rtmidi==1.5.8
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 websockets==16.0
+yt-dlp==2026.8.19

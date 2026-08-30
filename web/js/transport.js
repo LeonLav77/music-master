@@ -189,6 +189,78 @@ export const transport = {
     return request(`/api/tsl/${encodeURIComponent(file)}/${index}`, { method: "POST" });
   },
 
+  // ---- aux deck ----
+  //
+  // Plain HTTP, unlike the parameter writes above: these are one-shot
+  // commands a few seconds apart, not a stream of slider steps, so there is
+  // nothing for the WebSocket to save. State still arrives over the socket -
+  // the server pushes "audio" frames - so the deck follows the player the
+  // same way the surface follows the amp.
+
+  /** Playable files in tracks/, with durations. */
+  async tracks() {
+    return request("/api/audio/tracks");
+  },
+
+  /** Ranges the server enforces, so the UI does not hardcode them. */
+  async audioLimits() {
+    return request("/api/audio/limits");
+  },
+
+  /** Output devices. The Katana's USB input is flagged, not hidden. */
+  async sinks() {
+    return request("/api/audio/sinks");
+  },
+
+  /** Where the transport is right now. */
+  async audioStatus() {
+    return request("/api/audio/status");
+  },
+
+  /** Start a track. `bpm` of 0 or null means no count-in. */
+  async play({ track, volume, sink, start, bpm, bars, beatsPerBar, boostDb }) {
+    return request("/api/audio/play", {
+      method: "POST",
+      body: JSON.stringify({
+        track, volume, sink, start,
+        bpm: bpm || null, bars, beats_per_bar: beatsPerBar,
+        boost_db: boostDb || 0,
+      }),
+    });
+  },
+
+  /** Level of the running track. Takes effect immediately, no restart. */
+  async setVolume(volume) {
+    return request("/api/audio/volume", {
+      method: "POST",
+      body: JSON.stringify({ volume }),
+    });
+  },
+
+  async pauseAudio()  { return request("/api/audio/pause",  { method: "POST" }); },
+  async resumeAudio() { return request("/api/audio/resume", { method: "POST" }); },
+  async stopAudio()   { return request("/api/audio/stop",   { method: "POST" }); },
+
+  /** Jump to a position. Restarts the player, so send it on release. */
+  async seekAudio(position) {
+    return request("/api/audio/seek", {
+      method: "POST",
+      body: JSON.stringify({ position }),
+    });
+  },
+
+  /** Download a YouTube link into the library. Slow - it holds until done. */
+  async fetchTrack(url) {
+    return request("/api/audio/fetch", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  },
+
+  async deleteTrack(file) {
+    return request(`/api/audio/tracks/${encodeURIComponent(file)}`, { method: "DELETE" });
+  },
+
   onMessage(fn) {
     messageListeners.push(fn);
     return () => {

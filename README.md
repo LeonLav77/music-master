@@ -20,7 +20,7 @@ web/
   index.html       test page - gain, volume, wah, channels
 patches/           .tsl patch files
 demo.py            command-line demo
-run-server         start the API
+run                start the server (API, aux deck and UI on one port)
 vendor/            upstream reference project, for its protocol docs
 ```
 
@@ -375,7 +375,7 @@ worked out, so roughly half those bytes land in the wrong place. Use
 ## API server
 
 ```bash
-./run-server
+./run
 ```
 
 Then open **http://localhost:8000** for the test page — gain and volume

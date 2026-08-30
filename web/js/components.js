@@ -9,6 +9,7 @@ import {
 } from "./controls.js";
 import { EQ_BANDS, AMP_MODEL_OPTIONS } from "./schema.js";
 import { transport } from "./transport.js";
+import { clock } from "./deck.js";
 
 const store = () => Alpine.store("katana");
 
@@ -296,6 +297,88 @@ export function channelRail() {
       const id = this.pending;
       this.pending = null;
       if (id) store().saveToChannel(id);
+    },
+  };
+}
+
+// ---- aux deck ----
+
+const deck = () => Alpine.store("deck");
+
+/** The scrub bar under the transport.
+ *
+ * Seeking restarts the player process server-side, so this deliberately
+ * does not seek while dragging: it tracks a local position under the
+ * finger and commits once on release. Scrubbing continuously would spawn
+ * an ffmpeg trim and a new pw-play per pointermove.
+ */
+export function scrubber() {
+  return {
+    dragging: false,
+    preview: 0,
+
+    /** Where to draw the head: the finger while dragging, else the track. */
+    get percent() {
+      const d = deck();
+      if (this.dragging) return this.preview;
+      return d.progress;
+    },
+    get label() {
+      const d = deck();
+      if (!this.dragging || !d.duration) return d.elapsedLabel;
+      return clock((this.preview / 100) * d.duration);
+    },
+
+    at(ev) {
+      const r = this.$refs.bar.getBoundingClientRect();
+      const f = (ev.clientX - r.left) / r.width;
+      return Math.min(100, Math.max(0, f * 100));
+    },
+    down(ev) {
+      if (!deck().active) return;
+      ev.target.setPointerCapture?.(ev.pointerId);
+      this.dragging = true;
+      this.preview = this.at(ev);
+    },
+    move(ev) {
+      if (!this.dragging) return;
+      this.preview = this.at(ev);
+    },
+    up(ev) {
+      if (!this.dragging) return;
+      ev.target.releasePointerCapture?.(ev.pointerId);
+      this.dragging = false;
+      const d = deck();
+      if (d.duration) void d.seek((this.preview / 100) * d.duration);
+    },
+    key(ev) {
+      const d = deck();
+      if (!d.active || !d.duration) return;
+      const step = ev.shiftKey ? 30 : 5;
+      if (ev.key === "ArrowRight") { void d.seek(d.position + step); ev.preventDefault(); }
+      if (ev.key === "ArrowLeft") { void d.seek(d.position - step); ev.preventDefault(); }
+    },
+  };
+}
+
+/** Tap tempo. Four taps beat typing a BPM you had to work out first. */
+export function tapTempo() {
+  return {
+    taps: [],
+
+    tap() {
+      const now = performance.now();
+      // A gap longer than a very slow bar means a new count, not a
+      // continuation - otherwise the average drags toward whenever you
+      // last touched it.
+      this.taps = this.taps.filter((t) => now - t < 3000);
+      this.taps.push(now);
+      if (this.taps.length < 2) return;
+
+      const gaps = this.taps.slice(1).map((t, i) => t - this.taps[i]);
+      const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const bpm = Math.round(60000 / mean);
+      deck().bpm = Math.min(300, Math.max(30, bpm));
     },
   };
 }
