@@ -21,6 +21,17 @@ Group=katana
 SupplementaryGroups=audio plugdev
 
 WorkingDirectory=/opt/katana
+
+# PipeWire is a *user* service, reached over a socket in the user's runtime
+# directory. A system service gets no XDG_RUNTIME_DIR of its own, so without
+# this the aux deck finds no sound card at all - the sink list comes back
+# empty even though the hardware is fine and pw-play works by hand.
+#
+# `loginctl enable-linger katana` is what makes that directory exist without
+# anyone logging in; install.sh does it.
+# __UID__ is replaced by install.sh with the katana user's real uid.
+Environment=XDG_RUNTIME_DIR=/run/user/__UID__
+Environment=PULSE_RUNTIME_PATH=/run/user/__UID__/pulse
 ExecStart=/opt/katana/venv/bin/python -m server.app --host 0.0.0.0 --port 8000
 
 # The amp being absent is normal - it powers up with the rig, and the server
@@ -37,9 +48,18 @@ SyslogIdentifier=katana
 # Modest hardening. Not a security boundary - it runs on a private AP - but
 # it costs nothing and keeps a bug from writing outside its own tree.
 NoNewPrivileges=yes
-PrivateTmp=yes
 ProtectSystem=full
-ProtectHome=yes
+
+# ProtectHome=yes would be the obvious thing here, but it makes /run/user
+# inaccessible - and that is where PipeWire's socket lives. With it on, the
+# aux deck finds no sound card at all: the sink list comes back empty while
+# the very same command works by hand. read-only keeps /home protected
+# without hiding the socket.
+ProtectHome=read-only
+
+# PrivateTmp gives the service its own /tmp, which breaks the PipeWire
+# client's shared-memory handshake.
+PrivateTmp=no
 # tracks/ and patches/ live under the working directory and must stay writable.
 ReadWritePaths=/opt/katana
 

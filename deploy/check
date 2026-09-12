@@ -92,11 +92,38 @@ fi
 
 echo
 echo "Aux deck"
-for bin in ffmpeg ffprobe pw-play; do
+for bin in ffmpeg ffprobe pw-play wpctl; do
   command -v "$bin" >/dev/null \
     && ok "$bin present" \
     || bad "$bin missing" "sudo apt install ${bin%%p*}"
 done
+
+# The three things that make the deck silent while looking healthy. All were
+# real failures once, and none of them announce themselves.
+if id katana >/dev/null 2>&1; then
+  [ "$(loginctl show-user katana -p Linger --value 2>/dev/null)" = yes ] \
+    && ok "audio session lingering" \
+    || bad "katana has no user session" "sudo loginctl enable-linger katana"
+
+  sinks=$(curl -s --max-time 5 "http://localhost:$PORT/api/audio/sinks" 2>/dev/null)
+  case "$sinks" in
+    *'"analog":true'*) ok "analog output found (the 3.5mm jack)" ;;
+    *'"sinks":[]'*)    bad "no audio outputs visible to the service" \
+                           "ProtectHome/PrivateTmp in katana.service hide PipeWire's socket" ;;
+    *)                 note "only non-analog sinks - playing would re-amp through the USB" ;;
+  esac
+
+  u=$(id -u katana)
+  vol=$(sudo -u katana XDG_RUNTIME_DIR="/run/user/$u" wpctl status 2>/dev/null |
+        sed -n '/Sinks:/,/Sources:/p' | grep -i "built-in" | grep -oE '\[vol: [0-9.]+' |
+        grep -oE '[0-9.]+$')
+  if [ -n "$vol" ]; then
+    case "$vol" in
+      0.0*|0.1*|0.2*|0.3*) note "jack volume $vol - low enough to sound like silence" ;;
+      *) ok "jack volume $vol" ;;
+    esac
+  fi
+fi
 
 echo
 echo "Network"

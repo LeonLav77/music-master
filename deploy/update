@@ -110,7 +110,14 @@ rollback() {
 }
 
 install_units() {
-  install -m 644 "$APP_DIR"/deploy/systemd/*.service /etc/systemd/system/ 2>/dev/null
+  # katana.service carries a __UID__ placeholder for the service user's
+  # runtime directory (see the unit for why). Substituting it here keeps an
+  # update from overwriting a working unit with an unsubstituted one.
+  uid=$(id -u "$APP_USER")
+  for unit in "$APP_DIR"/deploy/systemd/*.service; do
+    sed "s|__UID__|$uid|g" "$unit" > "/etc/systemd/system/$(basename "$unit")"
+    chmod 644 "/etc/systemd/system/$(basename "$unit")"
+  done
   install -m 644 "$APP_DIR"/deploy/systemd/*.timer   /etc/systemd/system/ 2>/dev/null
   install -m 644 "$APP_DIR"/deploy/udev/*.rules      /etc/udev/rules.d/   2>/dev/null
   systemctl daemon-reload

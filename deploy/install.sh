@@ -62,6 +62,33 @@ done
 
 install -d -o "$APP_USER" -g "$APP_USER" "$STATE_DIR" "$STATE_DIR/chromium"
 
+# PipeWire is a user service. A system account never logs in, so without
+# lingering it gets no user session, no runtime directory and no audio -
+# the aux deck would find no sound card at all.
+loginctl enable-linger "$APP_USER" 2>/dev/null || true
+
+# Start it now so the first run has audio without waiting for a reboot.
+uid=$(id -u "$APP_USER")
+sudo -u "$APP_USER" XDG_RUNTIME_DIR="/run/user/$uid" \
+  systemctl --user enable --now pipewire wireplumber 2>/dev/null || true
+
+# The headphone jack comes up at 40%, which into an amp's AUX input is
+# quiet enough to read as "no sound at all". Nudge it up once, on a fresh
+# install only - clobbering a level the user has since set would be worse
+# than leaving it low.
+if [ ! -e "$STATE_DIR/.audio-set" ]; then
+  sleep 2
+  jack=$(sudo -u "$APP_USER" XDG_RUNTIME_DIR="/run/user/$uid" wpctl status 2>/dev/null |
+         sed -n '/Sinks:/,/Sources:/p' | grep -i "built-in" |
+         grep -oE '[0-9]+\.' | tr -d '.' | head -1)
+  if [ -n "$jack" ]; then
+    sudo -u "$APP_USER" XDG_RUNTIME_DIR="/run/user/$uid" wpctl set-volume "$jack" 0.85 2>/dev/null || true
+    sudo -u "$APP_USER" XDG_RUNTIME_DIR="/run/user/$uid" wpctl set-mute "$jack" 0 2>/dev/null || true
+  fi
+  touch "$STATE_DIR/.audio-set"
+  chown "$APP_USER:$APP_USER" "$STATE_DIR/.audio-set"
+fi
+
 # --- code ------------------------------------------------------------------
 say "Installing to $APP_DIR"
 install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR"
@@ -91,7 +118,13 @@ sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.tx
 
 # --- services --------------------------------------------------------------
 say "Installing services"
-install -m 644 "$SRC/deploy/systemd/katana.service"       /etc/systemd/system/
+# The service needs the katana user's runtime directory to reach PipeWire,
+# and that path contains their uid - which is assigned at creation and is
+# not the same on every machine.
+uid=$(id -u "$APP_USER")
+sed "s|__UID__|$uid|g" "$SRC/deploy/systemd/katana.service" \
+  > /etc/systemd/system/katana.service
+chmod 644 /etc/systemd/system/katana.service
 install -m 644 "$SRC/deploy/systemd/katana-kiosk.service" /etc/systemd/system/
 install -m 644 "$SRC/deploy/systemd/katana-net.service"   /etc/systemd/system/
 install -m 644 "$SRC/deploy/systemd/katana-net.timer"     /etc/systemd/system/

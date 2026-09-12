@@ -29,9 +29,11 @@ import math
 import re
 import shutil
 import struct
+import contextlib
 import subprocess
 import signal
 import tempfile
+import threading
 import time
 import wave
 from pathlib import Path
@@ -259,9 +261,11 @@ def _gain_filter(db):
 def boost(track, destination, db):
     """Copy `track` to `destination`, `db` louder and limited.
 
-    A separate pass only when there is no count-in to fold it into - see
-    prepend_click, which applies the same filter in the join it was doing
-    anyway rather than reading the track twice.
+    Not used by playback, which streams the same filter through a pipe so
+    it does not have to wait for a whole file to be written (see
+    `Player._spawn`). This is the offline form: useful for rendering a
+    louder copy to keep, and for checking what the filter actually does to
+    a track without having to listen to it.
     """
     if shutil.which("ffmpeg") is None:
         raise AudioError("ffmpeg is needed to boost the level but is not installed")
@@ -278,56 +282,6 @@ def boost(track, destination, db):
     )
     if result.returncode != 0:
         raise AudioError(f"Could not raise the level: {result.stderr.strip()}")
-    return destination
-
-
-def prepend_click(track, destination, bpm, beats, accent_every=4, db=0.0):
-    """Build `destination`: a count-in, then `track`.
-
-    The source file is never touched - the count-in is a property of how you
-    are practising today, not of the recording, and a track that quietly
-    grew four bars of click would be a nasty surprise next time.
-
-    Joined with ffmpeg's concat *filter*, not the concat demuxer with
-    `-c copy`. The demuxer is faster but assumes both inputs share a format:
-    hand it a 44.1k stereo click and a 48k mono download and it produces a
-    file whose length is wrong - the count-in drifts against the track, and
-    the count-in existing at all is the point. The filter resamples both
-    into one stream, so it is right whatever the download turned out to be.
-
-    `db` raises the track's level in the same pass. Folded in here rather
-    than run separately so a track with both a count-in and a boost is
-    still read and written once; the gain is applied to the track only,
-    never to the click, which is generated at a sensible level already and
-    should not get louder just because the song needs to.
-    """
-    if shutil.which("ffmpeg") is None:
-        raise AudioError("ffmpeg is needed for the count-in but is not installed")
-
-    track = Path(track)
-    destination = Path(destination)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        click = Path(tmp) / "click.wav"
-        write_click(click, bpm, beats, accent_every)
-
-        gain = _gain_filter(db)
-        graph = (
-            f"[1:a]{gain}[loud];[0:a][loud]concat=n=2:v=0:a=1[out]"
-            if gain else
-            "[0:a][1:a]concat=n=2:v=0:a=1[out]"
-        )
-        result = subprocess.run(
-            ["ffmpeg", "-v", "error", "-y",
-             "-i", str(click), "-i", str(track),
-             "-filter_complex", graph,
-             "-map", "[out]",
-             "-ar", str(CLICK_RATE), "-ac", "2",
-             str(destination)],
-            capture_output=True, text=True,
-        )
-    if result.returncode != 0:
-        raise AudioError(f"Could not build the count-in: {result.stderr.strip()}")
     return destination
 
 
@@ -381,13 +335,31 @@ class Player:
         self._lead_in = 0.0         # count-in seconds sitting before the track
         self._volume = 1.0          # remembered, so a seek does not reset it
         self._db = 0.0              # ditto for the boost
+        self._click = None          # the count-in's own pw-play child
+        self._starter = None        # timer that starts the track after it
+        self._encoder = None        # ffmpeg feeding pw-play, when boosting
+        self._encoder_log = None    # its stderr, kept for the error message
+        self._last_error = None     # why the last track stopped, if it failed
+        # The count-in runs the transport from a timer thread, so the few
+        # fields it touches need guarding against a stop() arriving from
+        # the request thread at the same moment.
+        self._lock = threading.RLock()
 
     # -- state --
 
     @property
     def active(self):
-        """Is a process alive, playing or paused?"""
-        return self._process is not None and self._process.poll() is None
+        """Is anything alive - the count-in, the track, playing or paused?
+
+        The count-in is a second process, and during it `_process` is still
+        None: the transport is very much running, so both have to count.
+        """
+        for proc in (self._process, self._click):
+            if proc is not None and proc.poll() is None:
+                return True
+        # A pending timer is also "active": the click may have drained but
+        # the track it schedules has not started yet.
+        return self._starter is not None
 
     @property
     def paused(self):
@@ -406,7 +378,12 @@ class Player:
 
     def status(self):
         """Everything a UI needs to draw the transport."""
+        # Read the encoder's failure before reaping: _reap() clears the
+        # handles on a dead track, and the explanation would go with them.
+        failure = self.encoder_error()
         self._reap()
+        if failure:
+            self._last_error = failure
         return {
             "state": "paused" if self.paused else "playing" if self.playing else "stopped",
             "track": self._track,
@@ -418,7 +395,36 @@ class Player:
             ),
             "sink": self._sink,
             "boost_db": self._db,
+            # Sticky until the next play: a track that died two polls ago
+            # still has to explain itself, and by then the process is gone.
+            "error": self._last_error,
         }
+
+    def encoder_error(self):
+        """Why a boosted track stopped early, if ffmpeg is what failed.
+
+        The streaming boost puts ffmpeg in front of pw-play, so a file it
+        cannot decode kills playback with no exception anywhere - the play
+        request has long since returned 200. This is how that failure gets
+        a message instead of the track simply never being heard.
+
+        Returns None when nothing is wrong, which includes the normal case
+        of ffmpeg being killed by a stop.
+        """
+        if self._encoder is None or self._encoder_log is None:
+            return None
+        code = self._encoder.poll()
+        # Still running, exited cleanly, or terminated by us on a stop.
+        if code is None or code == 0 or code < 0:
+            return None
+        try:
+            self._encoder_log.flush()
+            text = Path(self._encoder_log.name).read_text().strip()
+        except OSError:
+            return None
+        if not text:
+            return f"The track could not be decoded (ffmpeg exit {code})"
+        return text.splitlines()[-1]
 
     def _reap(self):
         """Drop the handle once the track has played out.
@@ -427,7 +433,13 @@ class Player:
         cares whether a finished track is still "playing" is something
         asking, and this way an idle server does no work at all.
         """
-        if self._process is not None and self._process.poll() is not None:
+        # Only the track ending means the transport is done. During the
+        # count-in `_process` is None and a pending `_starter` is what says
+        # the track is still coming; reaping on that would tear the whole
+        # thing down between the click and the downbeat.
+        if self._process is None:
+            return
+        if self._process.poll() is not None:
             self._cleanup()
 
     def _cleanup(self):
@@ -440,6 +452,14 @@ class Player:
         the listener had already heard to the end.
         """
         self._process = None
+        self._click = None
+        self._starter = None
+        self._encoder = None
+        if self._encoder_log is not None:
+            with contextlib.suppress(OSError):
+                self._encoder_log.close()
+                Path(self._encoder_log.name).unlink()
+            self._encoder_log = None
         self._playing_file = None
         self._paused_at = None
         self._offset = 0.0
@@ -457,10 +477,23 @@ class Player:
     def play(self, track, sink=None, volume=1.0, count_in=None, start=0.0, db=0.0):
         """Start `track`. Any current track stops.
 
-        `count_in` is (bpm, beats, accent_every) or None. It is built into a
-        temporary file rather than played as a second stream: two streams
-        would need their own mixing and could drift, and the whole point is
-        that the click is exactly N beats ahead of the downbeat.
+        `count_in` is (bpm, beats, accent_every) or None. The click is
+        played as its own short file and the track is started on a timer
+        when it ends, rather than being glued to the front of the track.
+
+        Gluing was the obvious implementation and it was far too slow. It
+        meant decoding and re-encoding the whole song to prepend two
+        seconds of click: cost scaled with track length, so a seven-minute
+        backing track wrote 73 MB of WAV and took most of a second before
+        anything was audible. Playing them in sequence is independent of
+        length - the click is a tenth of a megabyte whatever the song is,
+        and the track itself is handed to pw-play untouched.
+
+        The two never overlap, so there is no mixing and nothing to drift:
+        the second process is started when the first one's audio is due to
+        finish, timed from a monotonic clock rather than from the click
+        process exiting (pw-play lingers ~130 ms after its last sample
+        while its buffer drains, which would push the downbeat late).
 
         `volume` is passed to pw-play unchanged. aux-play.sh explains why it
         should stay at unity: the analog jack is low-power, the amp's AUX IN
@@ -470,8 +503,9 @@ class Player:
         `db` is the other half of that. Where `volume` only attenuates, this
         raises the track above its own recorded level for playing with other
         people, by rebuilding the audio through a limiter - see
-        `_gain_filter`. It costs an ffmpeg pass before playback starts,
-        which is why it is a deliberate setting and not a second fader.
+        `_gain_filter`. This one genuinely does have to rewrite the audio,
+        so it still costs an ffmpeg pass proportional to track length; it
+        is a deliberate setting rather than a fader for exactly that reason.
         """
         track = Path(track)
         if not track.is_file():
@@ -491,61 +525,151 @@ class Player:
         lead_in = 0.0
         temp = None
 
-        # Seek and count-in both mean playing a file other than the one on
-        # disk. Build them in one scratch dir so cleanup is a single rmtree.
+        # A scratch dir only when something actually has to be written.
+        # Note what is *not* here any more: the track itself, for a plain
+        # count-in. Only a seek (a container-level copy) or a boost (a real
+        # re-encode) touches the audio now.
         if start > 0 or count_in or db:
             temp = Path(tempfile.mkdtemp(prefix="katana-aux-"))
 
+        click_file = None
         try:
             if start > 0:
                 if length is not None and start >= length:
                     raise AudioError("Cannot start past the end of the track")
-                source = trim(source, temp / f"seek{track.suffix}", start)
+                # With a boost, ffmpeg is already in the pipeline and does
+                # the seek itself; without one, a container-level copy is
+                # the cheapest way to start partway in.
+                if not db:
+                    source = trim(source, temp / f"seek{track.suffix}", start)
 
             if count_in:
                 bpm, beats, accent = count_in
                 lead_in = beats * (60.0 / bpm)
-                # The click pass applies the gain too, so a boosted track
-                # with a count-in is one ffmpeg run rather than two.
-                source = prepend_click(
-                    source, temp / "with-click.wav", bpm, beats, accent, db=db
-                )
-            elif db:
-                source = boost(source, temp / "loud.wav", db)
+                # Cheap and independent of the track: a couple of seconds
+                # of PCM, written in about ten milliseconds.
+                click_file = write_click(temp / "click.wav", bpm, beats, accent)
         except Exception:
             if temp is not None:
                 shutil.rmtree(temp, ignore_errors=True)
             raise
 
-        try:
-            process = subprocess.Popen(
-                ["pw-play", "--target", target, "--volume", f"{volume:.3f}", str(source)],
-                # Both discarded rather than piped: nothing ever reads
-                # them, so a pipe would leak a descriptor per play and, if
-                # pw-play ever did get chatty, fill its buffer and wedge
-                # the track mid-song. Failures surface as an exit status,
-                # which _reap() already notices.
+        # Everything from here touches fields the count-in timer also
+        # reads, so it happens under the lock. The timer can fire while
+        # this method is still running - on a loaded machine, or simply
+        # with a very short count-in - and half-written transport state is
+        # how a track ends up playing at the wrong volume or not at all.
+        with self._lock:
+            self._last_error = None
+            self._sink = target
+            self._track = track.name
+            self._source = track
+            self._playing_file = source
+            self._temp = temp
+            self._duration = length
+            self._lead_in = lead_in
+            self._volume = volume
+            self._db = db
+            self._offset = start
+            self._paused_at = None
+            self._started = time.monotonic()
+
+            try:
+                if click_file is not None:
+                    self._click = self._spawn(click_file, target, volume)
+                    # Timed from the clock, not from the click process
+                    # exiting: pw-play hangs around after its last sample
+                    # while the buffer drains, and waiting for that would
+                    # put the downbeat roughly 130 ms late every time.
+                    timer = threading.Timer(
+                        lead_in, self._start_track,
+                        (source, target, db, start),
+                    )
+                    timer.daemon = True
+                    self._starter = timer
+                    timer.start()
+                else:
+                    self._process = self._spawn(source, target, volume, db, start)
+            except OSError as exc:
+                self._cleanup()
+                raise AudioError(f"Could not start playback: {exc}") from exc
+
+            return self.status()
+
+    def _spawn(self, path, target, volume, db=0.0, start=0.0):
+        """One pw-play child, with its output discarded.
+
+        stdout and stderr go to /dev/null rather than a pipe: nothing ever
+        reads them, so a pipe would leak a descriptor per play and, if
+        pw-play ever did get chatty, fill its buffer and wedge the track
+        mid-song. Failures surface as an exit status, which _reap() notices.
+
+        With a boost, ffmpeg is put in front of pw-play as a pipe rather
+        than writing a processed copy first. Same filter either way; the
+        difference is that a pipe starts playing while the encode is still
+        running, so startup stops scaling with track length - measured on a
+        seven-minute song, 40 ms instead of 1.1 s. A seek is handled by
+        ffmpeg's own -ss so the pipe still starts in the right place.
+        """
+        if not db:
+            return subprocess.Popen(
+                ["pw-play", "--target", target, "--volume", f"{volume:.3f}", str(path)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-        except OSError as exc:
-            if temp is not None:
-                shutil.rmtree(temp, ignore_errors=True)
-            raise AudioError(f"Could not start playback: {exc}") from exc
 
-        self._process = process
-        self._sink = target
-        self._track = track.name
-        self._source = track
-        self._playing_file = source
-        self._temp = temp
-        self._duration = length
-        self._lead_in = lead_in
-        self._volume = volume
-        self._db = db
-        self._offset = start
-        self._started = time.monotonic()
-        self._paused_at = None
-        return self.status()
+        seek = ["-ss", f"{start:.3f}"] if start > 0 else []
+        # ffmpeg's stderr goes to a file rather than a pipe or /dev/null:
+        # a pipe nobody drains would eventually block the encoder, and
+        # /dev/null threw away the only explanation of a failed decode.
+        # _encoder_error() reads it back when a boosted track dies early.
+        self._encoder_log = tempfile.NamedTemporaryFile(
+            prefix="katana-ffmpeg-", suffix=".log", delete=False
+        )
+        encoder = subprocess.Popen(
+            ["ffmpeg", "-v", "error", *seek, "-i", str(path),
+             "-af", _gain_filter(db),
+             "-f", "wav", "-ar", str(CLICK_RATE), "-ac", "2", "-"],
+            stdout=subprocess.PIPE, stderr=self._encoder_log,
+        )
+        player = subprocess.Popen(
+            ["pw-play", "--target", target, "--volume", f"{volume:.3f}", "-"],
+            stdin=encoder.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        # Our copy of the pipe has to go, or ffmpeg never sees pw-play exit
+        # and the encoder lingers after the track is stopped.
+        encoder.stdout.close()
+        self._encoder = encoder
+        return player
+
+    def _start_track(self, source, target, db=0.0, start=0.0):
+        """Start the track once the count-in has played. Runs on a timer.
+
+        Checks that it is still the *current* timer, by identity, not just
+        that some timer is pending. Timer.cancel() cannot recall a callback
+        that has already begun running, so a stop - or a second play that
+        installed its own count-in - can leave this blocked on the lock
+        with its work already obsolete. Comparing against `_starter` catches
+        both: a stop clears it, and a new play replaces it, so in either
+        case this returns without starting a track nobody is waiting for.
+
+        The volume is read from the player rather than captured when the
+        timer was scheduled, so moving the fader during the count-in
+        applies to the track when it starts.
+        """
+        with self._lock:
+            # A threading.Timer is itself the thread it runs on, so the
+            # timer that is executing right now is current_thread().
+            if self._starter is not threading.current_thread():
+                return
+            self._starter = None
+            try:
+                self._process = self._spawn(
+                    source, target, self._volume, db, start
+                )
+            except OSError:
+                # Nothing to raise to - we are on a timer thread. The
+                # transport simply reads as stopped on the next status().
+                self._cleanup()
 
     def set_volume(self, volume):
         """Change the level of the track already playing.
@@ -563,14 +687,25 @@ class Player:
         """
         if not 0.0 <= volume <= 1.0:
             raise AudioError("Volume must be between 0.0 and 1.0")
-        self._volume = volume
-        if not self.active or shutil.which("wpctl") is None:
-            return False
+        with self._lock:
+            self._volume = volume
+            if not self.active or shutil.which("wpctl") is None:
+                return False
 
-        for node in self._stream_nodes():
-            subprocess.run(["wpctl", "set-volume", node, f"{volume:.3f}"],
-                           capture_output=True)
-        return True
+            # During the count-in there is no track stream to adjust yet.
+            # That is not a failure - _start_track reads `_volume` when it
+            # fires, so the change lands on the track the moment it begins
+            # - but it has not been applied to anything *now*, and saying
+            # otherwise would make a fader look like it worked when the
+            # click carried on at the old level.
+            nodes = self._stream_nodes()
+            if not nodes:
+                return False
+
+            for node in nodes:
+                subprocess.run(["wpctl", "set-volume", node, f"{volume:.3f}"],
+                               capture_output=True)
+            return True
 
     def _stream_nodes(self):
         """PipeWire node ids belonging to our pw-play child.
@@ -579,7 +714,11 @@ class Player:
         the machine is somebody else's audio, and turning it down would be
         a surprising thing for a guitar amp UI to do.
         """
-        if self._process is None:
+        # Both children: during the count-in only the click exists, and it
+        # should follow the fader like anything else coming out of the jack.
+        pids = {p.pid for p in (self._process, self._click)
+                if p is not None and p.poll() is None}
+        if not pids:
             return []
         try:
             dump = subprocess.run(["pw-dump"], capture_output=True, text=True,
@@ -593,11 +732,10 @@ class Player:
         # pointing back at that client. Matching the pid alone finds the
         # client, whose "volume" wpctl will happily accept and silently do
         # nothing with.
-        pid = self._process.pid
         clients = {
             str(obj["id"]) for obj in objects
             if ((obj.get("info") or {}).get("props") or {})
-            .get("application.process.id") == pid
+            .get("application.process.id") in pids
         }
         if not clients:
             return []
@@ -619,38 +757,64 @@ class Player:
         pause rather than a real stop: a stopped process cannot be resumed
         into the same audio stream.
         """
-        if not self.playing:
+        with self._lock:
+            if not self.playing:
+                return self.status()
+            # Pausing during the count-in stops the whole gesture rather
+            # than freezing a click mid-blip: a count-in you resume three
+            # bars later has not counted you into anything.
+            if self._starter is not None or (
+                self._click is not None and self._click.poll() is None
+            ):
+                return self.stop()
+            self._process.send_signal(signal.SIGSTOP)
+            self._paused_at = time.monotonic()
             return self.status()
-        self._process.send_signal(signal.SIGSTOP)
-        self._paused_at = time.monotonic()
-        return self.status()
 
     def resume(self):
-        if not self.paused:
+        with self._lock:
+            # Only a paused track can resume, and pause() only ever pauses
+            # a track - a count-in is stopped rather than frozen - so
+            # `_process` is always the thing to wake here.
+            if not self.paused or self._process is None:
+                return self.status()
+            # Everything between the pause and now is time the track did
+            # not advance, so roll the start forward by exactly that much.
+            self._started += time.monotonic() - self._paused_at
+            self._paused_at = None
+            self._process.send_signal(signal.SIGCONT)
             return self.status()
-        # Everything between the pause and now is time the track did not
-        # advance, so roll the start forward by exactly that much.
-        self._started += time.monotonic() - self._paused_at
-        self._paused_at = None
-        self._process.send_signal(signal.SIGCONT)
-        return self.status()
 
     def stop(self):
-        if self._process is None:
+        """Stop everything: the track, the count-in, and a pending start.
+
+        The timer is cancelled first and under the lock. Cancelling a
+        threading.Timer that has already fired does nothing, so `_starter`
+        is also the flag `_start_track` checks - clearing it here is what
+        stops a click that is mid-drain from starting the track a moment
+        after the user pressed stop.
+        """
+        with self._lock:
+            starter, self._starter = self._starter, None
+            if starter is not None:
+                starter.cancel()
+
+            for proc in (self._click, self._process, self._encoder):
+                if proc is None or proc.poll() is not None:
+                    continue
+                # A paused process ignores SIGTERM until it runs again, so
+                # wake it first - otherwise stopping a paused track hangs.
+                if self._paused_at is not None:
+                    proc.send_signal(signal.SIGCONT)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+
+            self._cleanup()
             return self.status()
-        if self._process.poll() is None:
-            # A paused process ignores SIGTERM until it runs again, so wake
-            # it first - otherwise stopping a paused track hangs here.
-            if self._paused_at is not None:
-                self._process.send_signal(signal.SIGCONT)
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
-                self._process.wait(timeout=2)
-        self._cleanup()
-        return self.status()
 
     def seek(self, position, **kwargs):
         """Jump to `position` seconds by restarting from a trimmed copy.

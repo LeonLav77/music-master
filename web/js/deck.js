@@ -124,6 +124,10 @@ export function createDeckStore() {
       this.track = status.track;
       this.duration = status.duration;
       this.countInRemaining = status.count_in_remaining ?? 0;
+      // A boosted track that ffmpeg could not decode fails after the play
+      // request has already returned 200, so the reason arrives here
+      // rather than as a rejected call.
+      if (status.error) this.error = status.error;
       if (status.sink) this.sink = status.sink;
       this.now = Date.now();
     },
