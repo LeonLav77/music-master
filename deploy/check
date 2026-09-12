@@ -105,11 +105,20 @@ if id katana >/dev/null 2>&1; then
     && ok "audio session lingering" \
     || bad "katana has no user session" "sudo loginctl enable-linger katana"
 
+  # An unsubstituted placeholder points the service at a runtime directory
+  # that does not exist, so it finds no PipeWire and no sinks at all. Checked
+  # before the sink list because it explains an empty one exactly, and the
+  # generic "sockets are hidden" advice would send you the wrong way.
+  if grep -lq '__UID__' /etc/systemd/system/katana*.service 2>/dev/null; then
+    bad "katana.service still has a literal __UID__" \
+        "sudo ./deploy/update reinstalls it, or re-run deploy/install.sh"
+  fi
+
   sinks=$(curl -s --max-time 5 "http://localhost:$PORT/api/audio/sinks" 2>/dev/null)
   case "$sinks" in
     *'"analog":true'*) ok "analog output found (the 3.5mm jack)" ;;
     *'"sinks":[]'*)    bad "no audio outputs visible to the service" \
-                           "ProtectHome/PrivateTmp in katana.service hide PipeWire's socket" ;;
+                           "check XDG_RUNTIME_DIR in katana.service, then ProtectHome/PrivateTmp" ;;
     *)                 note "only non-analog sinks - playing would re-amp through the USB" ;;
   esac
 

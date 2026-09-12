@@ -133,6 +133,24 @@ if [ "$needs_venv" = yes ]; then
   fi
 fi
 
+# Reinstall whenever the diff touched them - and also whenever what is
+# already installed still carries an unsubstituted placeholder.
+#
+# That second condition is not paranoia, it is a bug that actually happened:
+# the commit that introduced __UID__ changed this script *and* the unit, and
+# the version of this script doing the pull was the old one, which copied
+# units verbatim. The result was a live unit pointing at a literal
+# /run/user/__UID__ - no PipeWire, no sinks, and every play rejected - which
+# no later update would fix, because no later diff touched deploy/systemd.
+#
+# A script cannot install its own future improvements retroactively, so the
+# durable answer is to check the installed state rather than trust the diff.
+if [ "$needs_units" = no ] &&
+   grep -lq '__UID__' /etc/systemd/system/katana*.service 2>/dev/null; then
+  warn "installed units still contain a placeholder - reinstalling"
+  needs_units=yes
+fi
+
 if [ "$needs_units" = yes ]; then
   say "Reinstalling services"
   install_units
