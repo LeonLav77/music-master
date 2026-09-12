@@ -174,7 +174,10 @@ async def delete_track(name: str):
         current = await asyncio.to_thread(_player.status)
         stopped = False
         if current["track"] == path.name:
-            await asyncio.to_thread(_player.stop)
+            # unload, not stop: stop deliberately keeps the track loaded so
+            # it can be played again, and that is exactly wrong for a file
+            # about to be removed from disk.
+            await asyncio.to_thread(_player.unload)
             stopped = True
         await asyncio.to_thread(path.unlink)
 

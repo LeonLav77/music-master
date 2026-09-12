@@ -370,9 +370,14 @@ class Player:
         return self.active and self._paused_at is None
 
     def position(self):
-        """Seconds into the *track*, negative during the count-in."""
+        """Seconds into the *track*, negative during the count-in.
+
+        A stopped transport reports `_offset` rather than a flat zero: stop
+        rewinds to the top, but a seek made while stopped moves the
+        playhead, and the UI has to be able to draw where it now is.
+        """
         if not self.active:
-            return 0.0
+            return self._offset
         end = self._paused_at if self._paused_at is not None else time.monotonic()
         return (end - self._started) + self._offset - self._lead_in
 
@@ -443,13 +448,20 @@ class Player:
             self._cleanup()
 
     def _cleanup(self):
-        """Return to a stopped transport, whatever got us here.
+        """Release the processes and rewind, keeping the track loaded.
 
-        Clears the loaded track as well as the process. A track that has
-        played out is not "still loaded, just not running": leaving the
-        name and duration behind made a finished track look paused to
-        status(), and let seek() pass its own guard and restart something
-        the listener had already heard to the end.
+        Stop means "back to the top", not "eject". The track that was
+        playing stays selected with its duration intact, so the transport
+        still reads as that track at 0:00 and pressing play again starts it
+        without having to pick it out of the library a second time - which
+        is how every other transport anyone has used behaves.
+
+        What is deliberately *not* kept is anything derived from the run
+        that just ended: the processes, the scratch files, and the paused
+        marker. `_paused_at` especially - a stopped track with a pause
+        marker left on it would read as paused, which is the bug this
+        method's previous version was over-correcting for when it cleared
+        the loaded track as well.
         """
         self._process = None
         self._click = None
@@ -464,13 +476,17 @@ class Player:
         self._paused_at = None
         self._offset = 0.0
         self._lead_in = 0.0
+        if self._temp is not None:
+            shutil.rmtree(self._temp, ignore_errors=True)
+            self._temp = None
+
+    def _unload(self):
+        """Forget the track entirely. Only for when the file is going away."""
+        self._cleanup()
         self._track = None
         self._source = None
         self._duration = None
         self._db = 0.0
-        if self._temp is not None:
-            shutil.rmtree(self._temp, ignore_errors=True)
-            self._temp = None
 
     # -- transport --
 
@@ -591,7 +607,10 @@ class Player:
                 else:
                     self._process = self._spawn(source, target, volume, db, start)
             except OSError as exc:
-                self._cleanup()
+                # A play that never started leaves nothing loaded: the
+                # caller gets an error, and the transport must not claim to
+                # be holding a track it failed to open.
+                self._unload()
                 raise AudioError(f"Could not start playback: {exc}") from exc
 
             return self.status()
@@ -816,6 +835,17 @@ class Player:
             self._cleanup()
             return self.status()
 
+    def unload(self):
+        """Stop and forget the track entirely.
+
+        Stop on its own keeps the track loaded, which is what a transport
+        should do - but not when the file is being deleted underneath it.
+        """
+        with self._lock:
+            self.stop()
+            self._unload()
+            return self.status()
+
     def seek(self, position, **kwargs):
         """Jump to `position` seconds by restarting from a trimmed copy.
 
@@ -831,7 +861,23 @@ class Player:
         through one is not what anybody meant by scrubbing there.
         """
         if self._source is None:
-            raise AudioError("Nothing is playing")
+            raise AudioError("No track is loaded")
+        # Seeking a stopped track moves the playhead without starting it.
+        # A stop leaves the track loaded, so this is now reachable, and
+        # scrubbing a track you have deliberately stopped should not be
+        # what starts it playing again.
+        with self._lock:
+            if not self.active:
+                self._offset = max(0.0, position)
+                if self._duration is not None:
+                    # Keep a second of track beyond the playhead. A scrub to
+                    # the far right otherwise parks exactly on the duration,
+                    # where play() refuses to start at all; landing a hair
+                    # short of it merely starts and ends again immediately,
+                    # which is no more use. A second is enough to hear.
+                    self._offset = min(self._offset, max(0.0, self._duration - 1.0))
+                return self.status()
+
         # Carry the current sink and level across the restart. Without the
         # volume the play() default of 1.0 would apply, and scrubbing a
         # quiet backing track would slam it to full into the amp's AUX IN.

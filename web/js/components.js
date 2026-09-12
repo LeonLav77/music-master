@@ -335,7 +335,10 @@ export function scrubber() {
       return Math.min(100, Math.max(0, f * 100));
     },
     down(ev) {
-      if (!deck().active) return;
+      // A loaded track can be scrubbed whether or not it is running - stop
+      // keeps it loaded, and setting the start point before pressing play
+      // is a normal thing to want.
+      if (!deck().track) return;
       ev.target.setPointerCapture?.(ev.pointerId);
       this.dragging = true;
       this.preview = this.at(ev);
@@ -353,7 +356,7 @@ export function scrubber() {
     },
     key(ev) {
       const d = deck();
-      if (!d.active || !d.duration) return;
+      if (!d.track || !d.duration) return;
       const step = ev.shiftKey ? 30 : 5;
       if (ev.key === "ArrowRight") { void d.seek(d.position + step); ev.preventDefault(); }
       if (ev.key === "ArrowLeft") { void d.seek(d.position - step); ev.preventDefault(); }

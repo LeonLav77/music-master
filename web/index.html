@@ -455,7 +455,7 @@
                on release rather than seeking as it is dragged. -->
           <div
             class="scrub"
-            :class="!d.active && 'idle'"
+            :class="!d.track && 'idle'"
             x-ref="bar"
             x-data="scrubber"
             role="slider"
@@ -494,7 +494,7 @@
           </button>
 
           <button type="button" class="tbtn" aria-label="Stop"
-                  :disabled="!d.active" @click="d.stop()">
+                  :disabled="!d.active && !d.position" @click="d.stop()">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
           </button>
 

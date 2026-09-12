@@ -321,14 +321,22 @@ export function createDeckStore() {
     async toggle(file) {
       if (this.paused) return this.run(() => transport.resumeAudio());
       if (this.playing) return this.run(() => transport.pauseAudio());
+      // A stop leaves the track loaded, so play resumes whatever is on the
+      // deck rather than making you pick it out of the library again.
       const target = file ?? this.track ?? this.tracks[0]?.file;
-      if (target) await this.start(target);
+      if (!target) return;
+      // From wherever the playhead is: normally 0 after a stop, but a scrub
+      // while stopped moves it, and play should honour that.
+      const from = target === this.track ? this.position : 0;
+      await this.start(target, { from });
     },
 
     async stop() { await this.run(() => transport.stopAudio()); },
 
     async seek(seconds) {
-      if (!this.active) return;
+      // A loaded track can be scrubbed while stopped - the server moves the
+      // playhead without starting playback, so the next play begins there.
+      if (!this.track) return;
       await this.run(() => transport.seekAudio(Math.max(0, seconds)));
     },
 
