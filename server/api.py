@@ -626,12 +626,22 @@ async def _reconnect_loop():
     while True:
         await _reconnect.wait()
 
+        names = None
         try:
             async with _lock:
                 await _amp_call(_probe)
                 # Reaching the amp says nothing about what changed while it
                 # was away - it may have come back on a different channel.
                 values = await _amp_call(_refresh)
+                # The patch names too. A client that loaded while the amp
+                # was missing got nothing from /api/channels - that endpoint
+                # reads the amp directly and simply fails with none - and it
+                # never asks again, so without this the rail keeps showing
+                # the placeholder names from the schema for the whole
+                # session. Which is exactly the case this loop exists for:
+                # the Pi powered up before the amp.
+                with contextlib.suppress(KatanaError):
+                    names = await _amp_call(controls.get_patch_names)
         except KatanaError:
             await asyncio.sleep(RECONNECT_INTERVAL)
             continue
@@ -645,6 +655,8 @@ async def _reconnect_loop():
 
         _reconnect.clear()
         await _broadcast({"type": "state", "values": values})
+        if names:
+            await _broadcast({"type": "patches", "names": names})
 
 
 @contextlib.asynccontextmanager
