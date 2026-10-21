@@ -32,9 +32,9 @@ export function knob(key, label, { accent = "steel", size = "md", min = 0, max =
         min, max,
         travel: 200,
         holdKey: key,
-        hold: (k, h) => store().hold(k, h),
+        hold: (key, holding) => store().hold(key, holding),
         get: () => store().num(self.key),
-        set: (v) => store().set(self.key, v),
+        set: (value) => store().set(self.key, value),
       });
     },
   };
@@ -55,18 +55,18 @@ export function ampDial(size = 180) {
 
     get value() { return store().num("amp_type"); },
     get index() {
-      const i = this.options.findIndex((o) => o.value === this.value);
-      return Math.max(0, i);
+      const index = this.options.findIndex((option) => option.value === this.value);
+      return Math.max(0, index);
     },
     get name() {
-      return this.options.find((o) => o.value === this.value)?.label ?? "—";
+      return this.options.find((option) => option.value === this.value)?.label ?? "—";
     },
     get pointerAngle() { return (this.index / this.options.length) * 360; },
-    orbitStyle(o) {
-      const rad = ((o.angle - 90) * Math.PI) / 180;
-      const x = 50 + 38 * Math.cos(rad);
-      const y = 50 + 38 * Math.sin(rad);
-      return `left:${x}%;top:${y}%;transform:translate(-50%,-50%)`;
+    orbitStyle(mark) {
+      const rad = ((mark.angle - 90) * Math.PI) / 180;
+      const left = 50 + 38 * Math.cos(rad);
+      const top = 50 + 38 * Math.sin(rad);
+      return `left:${left}%;top:${top}%;transform:translate(-50%,-50%)`;
     },
 
     drag: null,
@@ -77,11 +77,11 @@ export function ampDial(size = 180) {
         max: AMP_MODEL_OPTIONS.length - 1,
         travel: 260,
         holdKey: "amp_type",
-        hold: (k, h) => store().hold(k, h),
+        hold: (key, holding) => store().hold(key, holding),
         get: () => self.index,
-        set: (i) => {
-          const v = AMP_MODEL_OPTIONS[i]?.value;
-          if (v !== undefined) store().set("amp_type", v);
+        set: (index) => {
+          const value = AMP_MODEL_OPTIONS[index]?.value;
+          if (value !== undefined) store().set("amp_type", value);
         },
       });
     },
@@ -113,9 +113,9 @@ export function treadle() {
     },
 
     apply(ev) {
-      const r = this.$refs.slab.getBoundingClientRect();
-      const f = 1 - (ev.clientY - r.top) / r.height;
-      store().set("wah_position", Math.round(Math.min(100, Math.max(0, f * 100))));
+      const rect = this.$refs.slab.getBoundingClientRect();
+      const fraction = 1 - (ev.clientY - rect.top) / rect.height;
+      store().set("wah_position", Math.round(Math.min(100, Math.max(0, fraction * 100))));
     },
     down(ev) {
       ev.target.setPointerCapture?.(ev.pointerId);
@@ -134,10 +134,10 @@ export function treadle() {
     },
     key(ev) {
       const map = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 };
-      const d = map[ev.key];
-      if (d === undefined) return;
+      const step = map[ev.key];
+      if (step === undefined) return;
       ev.preventDefault();
-      store().set("wah_position", Math.min(100, Math.max(0, this.value + d)));
+      store().set("wah_position", Math.min(100, Math.max(0, this.value + step)));
     },
   };
 }
@@ -160,7 +160,7 @@ export function eqPad() {
 
     get values() {
       const out = {};
-      for (const b of EQ_BANDS) out[b.key] = store().num(b.key);
+      for (const band of EQ_BANDS) out[band.key] = store().num(band.key);
       return out;
     },
     get on() { return store().bool("eq_switch"); },
@@ -168,11 +168,11 @@ export function eqPad() {
     get fill() { return `${this.curve} L 100 100 L 0 100 Z`; },
 
     apply(ev) {
-      const r = this.$refs.pad.getBoundingClientRect();
-      const { idx, value } = eqHit(r, ev.clientX, ev.clientY);
+      const rect = this.$refs.pad.getBoundingClientRect();
+      const { idx, value } = eqHit(rect, ev.clientX, ev.clientY);
       // fill the gap when the finger moves fast
-      for (const g of eqGapFill(this._lastIdx, idx, value, this.values)) {
-        store().set(g.key, g.value);
+      for (const fill of eqGapFill(this._lastIdx, idx, value, this.values)) {
+        store().set(fill.key, fill.value);
       }
       this._lastIdx = idx;
       this.hover = idx;
@@ -184,7 +184,7 @@ export function eqPad() {
       this.dragging = true;
       // Drawing sweeps across bands, so hold the whole row until the
       // gesture ends rather than one band at a time.
-      EQ_BANDS.forEach((b) => store().hold(b.key, true));
+      EQ_BANDS.forEach((band) => store().hold(band.key, true));
       this.apply(ev);
     },
     move(ev) {
@@ -196,10 +196,10 @@ export function eqPad() {
       this.dragging = false;
       this.hover = null;
       this._lastIdx = null;
-      EQ_BANDS.forEach((b) => store().hold(b.key, false));
+      EQ_BANDS.forEach((band) => store().hold(band.key, false));
     },
     flat() {
-      EQ_BANDS.forEach((b) => store().set(b.key, 0));
+      EQ_BANDS.forEach((band) => store().set(band.key, 0));
     },
   };
 }

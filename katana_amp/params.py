@@ -885,14 +885,13 @@ class Param(StrEnum):
         if self.unit():
             entry["unit"] = self.unit()
         if self.options():
-            entry["options"] = {str(v): label for v, label in self.options().items()}
+            entry["options"] = {str(number): label for number, label in self.options().items()}
         return entry
 
 
 # The graphic EQ bands, low to high.
-EQ_BANDS = [p for p in Param if p.value.startswith("eq_band_")]
+EQ_BANDS = [param for param in Param if param.value.startswith("eq_band_")]
 
 
 def describe_parameters():
-    """The schema the UI is built from: every setting, sorted by name."""
-    return [p.describe() for p in sorted(Param, key=lambda p: p.value)]
+    return [param.describe() for param in sorted(Param)]

@@ -16,10 +16,10 @@
   <!-- Slow amp operation: several seconds of MIDI where nothing visibly
        changes and then everything changes at once. Without this the
        surface just looks frozen. -->
-  <div class="busybar" :class="k.busy && 'show'" aria-live="polite">
+  <div class="busybar" :class="amp.busy && 'show'" aria-live="polite">
     <div class="busybar-track"><div class="busybar-fill"></div></div>
-    <template x-if="k.busy">
-      <div class="busybar-label-wrap"><span class="busybar-label" x-text="k.busy"></span></div>
+    <template x-if="amp.busy">
+      <div class="busybar-label-wrap"><span class="busybar-label" x-text="amp.busy"></span></div>
     </template>
   </div>
 
@@ -50,22 +50,22 @@
 
       <div class="status">
         <span class="patch-name engrave">
-          <span x-text="k.channelNames[k.channel]"></span>
-          <span class="edited" x-show="k.dirty"> · edited</span>
+          <span x-text="amp.channelNames[amp.channel]"></span>
+          <span class="edited" x-show="amp.dirty"> · edited</span>
         </span>
 
         <div class="status-actions">
           <!-- Whether the amp is actually reachable. Without this a
                disconnected surface looks identical to a working one. -->
-          <span class="conn" :title="k.connection === 'open' ? (k.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
-            <span aria-hidden="true" class="dot" :class="'dot-' + k.statusKind"></span>
-            <span class="conn-label engrave" x-text="k.statusLabel"></span>
+          <span class="conn" :title="amp.connection === 'open' ? (amp.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
+            <span aria-hidden="true" class="dot" :class="'dot-' + amp.statusKind"></span>
+            <span class="conn-label engrave" x-text="amp.statusLabel"></span>
           </span>
 
-          <span class="sync-label engrave" x-text="k.syncLabel"></span>
+          <span class="sync-label engrave" x-text="amp.syncLabel"></span>
 
           <button type="button" class="chip" @click="resync()">
-            <svg :class="k.syncing && 'spin'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+            <svg :class="amp.syncing && 'spin'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
             resync
           </button>
         </div>
@@ -75,19 +75,19 @@
     <!-- ---- channel rail ---- -->
     <div style="flex-shrink:0" x-data="channelRail">
       <div class="rail">
-        <template x-for="c in channels" :key="c.id">
+        <template x-for="channel in channels" :key="channel.id">
           <button
             type="button"
             class="rail-btn"
-            :class="[k.channel === c.id && 'active', c.id === 'panel' && 'panel']"
-            :disabled="k.busy !== null"
-            @click="k.selectChannel(c.id)"
-            @pointerdown="holdStart(c.id)"
+            :class="[amp.channel === channel.id && 'active', channel.id === 'panel' && 'panel']"
+            :disabled="amp.busy !== null"
+            @click="amp.selectChannel(channel.id)"
+            @pointerdown="holdStart(channel.id)"
             @pointerup="holdEnd()"
             @pointerleave="holdEnd()"
           >
-            <span class="rail-bank" x-text="c.id === 'panel' ? 'panel' : c.bank + c.id.slice(1)"></span>
-            <span class="rail-name" x-text="k.channelNames[c.id]"></span>
+            <span class="rail-bank" x-text="channel.id === 'panel' ? 'panel' : channel.bank + channel.id.slice(1)"></span>
+            <span class="rail-name" x-text="amp.channelNames[channel.id]"></span>
           </button>
         </template>
       </div>
@@ -97,7 +97,7 @@
       <template x-if="pending">
         <div class="overlay center" @click.self="pending = null">
           <div class="confirm" role="alertdialog" aria-modal="true">
-            <h2>Overwrite <span x-text="k.channelNames[pending]"></span>?</h2>
+            <h2>Overwrite <span x-text="amp.channelNames[pending]"></span>?</h2>
             <p>This writes the live panel sound into the stored slot. The sound currently saved there is lost permanently.</p>
             <div class="confirm-actions">
               <button type="button" class="btn" @click="pending = null">Cancel</button>
@@ -135,8 +135,8 @@
             @keydown="drag.key($event)"
           >
             <div class="ampdial-ring" aria-hidden="true"></div>
-            <template x-for="o in orbit" :key="o.label">
-              <span class="ampdial-orbit" :style="orbitStyle(o)" x-text="o.label"></span>
+            <template x-for="mark in orbit" :key="mark.label">
+              <span class="ampdial-orbit" :style="orbitStyle(mark)" x-text="mark.label"></span>
             </template>
             <svg viewBox="0 0 100 100" style="width:100%;height:100%">
               <defs>
@@ -159,8 +159,8 @@
 
         <!-- amp knobs -->
         <div class="knob-grid">
-          <template x-for="kn in ampKnobs" :key="kn.key">
-            <div x-data="knob(kn.key, kn.label, { accent: kn.accent, size: 'md' })">
+          <template x-for="ampKnob in ampKnobs" :key="ampKnob.key">
+            <div x-data="knob(ampKnob.key, ampKnob.label, { accent: ampKnob.accent, size: 'md' })">
               <div class="knob">
                 <div
                   class="knob-dial"
@@ -261,9 +261,9 @@
           <button
             type="button"
             class="toggle-btn"
-            :class="k.bool('bright') && 'on'"
-            :aria-pressed="k.bool('bright')"
-            @click="k.toggle('bright')"
+            :class="amp.bool('bright') && 'on'"
+            :aria-pressed="amp.bool('bright')"
+            @click="amp.toggle('bright')"
           >bright</button>
         </div>
       </div>
@@ -271,20 +271,20 @@
       <!-- pedalboard -->
       <div class="pedalboard amp-grille">
         <div class="stomp-grid">
-          <template x-for="b in blocks" :key="b.id">
-            <div class="stomp" :class="[k.bool(b.sw) && 'on', tileColor(b.label)]">
+          <template x-for="block in blocks" :key="block.id">
+            <div class="stomp" :class="[amp.bool(block.sw) && 'on', tileColor(block.label)]">
               <span class="stomp-sheen" aria-hidden="true"></span>
-              <button type="button" class="stomp-face" :aria-pressed="k.bool(b.sw)" @click="k.toggle(b.sw)">
+              <button type="button" class="stomp-face" :aria-pressed="amp.bool(block.sw)" @click="amp.toggle(block.sw)">
                 <span class="stomp-row">
-                  <span class="stomp-name" x-text="b.label"></span>
+                  <span class="stomp-name" x-text="block.label"></span>
                   <span style="position:relative;display:flex;height:1rem;width:1rem;align-items:center;justify-content:center">
-                    <span class="led" :class="['led-' + (b.led ? k.led(b.led) : 'off'), k.bool(b.sw) && b.led && k.led(b.led) !== 'off' && 'signal-breathe']"></span>
+                    <span class="led" :class="['led-' + (block.led ? amp.led(block.led) : 'off'), amp.bool(block.sw) && block.led && amp.led(block.led) !== 'off' && 'signal-breathe']"></span>
                   </span>
                 </span>
-                <span class="stomp-sub" x-text="b.sub || (k.bool(b.sw) ? 'engaged' : 'bypassed')"></span>
+                <span class="stomp-sub" x-text="block.sub || (amp.bool(block.sw) ? 'engaged' : 'bypassed')"></span>
                 <span class="stomp-bar"></span>
               </button>
-              <button type="button" class="stomp-gear" :aria-label="b.label + ' settings'" @click="openBlock = b.id">
+              <button type="button" class="stomp-gear" :aria-label="block.label + ' settings'" @click="openBlock = block.id">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
               </button>
             </div>
@@ -292,14 +292,14 @@
         </div>
 
         <div class="footswitches">
-          <template x-for="fs in footswitches" :key="fs.cc">
+          <template x-for="footswitch in footswitches" :key="footswitch.cc">
             <button
               type="button"
               class="footswitch"
-              :class="fs.block && k.bool(fs.block) && 'on'"
-              :title="`${fs.label} — CC${fs.cc}`"
-              @click="pressFootswitch(fs)"
-            ><span x-text="fs.label"></span></button>
+              :class="footswitch.block && amp.bool(footswitch.block) && 'on'"
+              :title="`${footswitch.label} — CC${footswitch.cc}`"
+              @click="pressFootswitch(footswitch)"
+            ><span x-text="footswitch.label"></span></button>
           </template>
         </div>
       </div>
@@ -380,8 +380,8 @@
         </svg>
       </div>
       <div class="eq-labels">
-        <template x-for="(b, i) in bands" :key="b.key">
-          <span :class="hover === i && 'hot'" x-text="hover === i ? $store.katana.num(b.key) : b.label"></span>
+        <template x-for="(band, index) in bands" :key="band.key">
+          <span :class="hover === index && 'hot'" x-text="hover === index ? $store.katana.num(band.key) : band.label"></span>
         </template>
       </div>
       </div>
@@ -408,12 +408,12 @@
             <div class="field">
               <span class="field-label">effect</span>
               <div class="segmented">
-                <template x-for="f in editor.fxSlot.options" :key="f.value">
+                <template x-for="effect in editor.fxSlot.options" :key="effect.value">
                   <button
                     type="button" class="seg"
-                    :class="f.value === editor.fxSlot.current && 'active'"
-                    @click="k.set(editor.fxSlot.typeKey, f.value)"
-                    x-text="f.label"
+                    :class="effect.value === editor.fxSlot.current && 'active'"
+                    @click="amp.set(editor.fxSlot.typeKey, effect.value)"
+                    x-text="effect.label"
                   ></button>
                 </template>
               </div>
@@ -421,16 +421,16 @@
           </template>
 
           <!-- enum pickers: flat, always-visible rows instead of dropdowns -->
-          <template x-for="p in (editor ? editor.enums : [])" :key="p.key">
+          <template x-for="param in (editor ? editor.enums : [])" :key="param.key">
             <div class="field">
-              <span class="field-label" x-text="p.label"></span>
+              <span class="field-label" x-text="param.label"></span>
               <div class="segmented">
-                <template x-for="o in p.options" :key="o.value">
+                <template x-for="option in param.options" :key="option.value">
                   <button
                     type="button" class="seg"
-                    :class="o.value === k.num(p.key) && 'active'"
-                    @click="k.set(p.key, o.value)"
-                    x-text="o.label"
+                    :class="option.value === amp.num(param.key) && 'active'"
+                    @click="amp.set(param.key, option.value)"
+                    x-text="option.label"
                   ></button>
                 </template>
               </div>
@@ -443,8 +443,8 @@
 
           <!-- the block's own knobs -->
           <div class="knob-row">
-            <template x-for="p in (editor ? editor.knobs : [])" :key="p.key">
-              <div x-data="knob(p.key, p.label, { size: 'sm', min: p.min, max: p.max, unit: p.unit })">
+            <template x-for="param in (editor ? editor.knobs : [])" :key="param.key">
+              <div x-data="knob(param.key, param.label, { size: 'sm', min: param.min, max: param.max, unit: param.unit })">
                 <div class="knob">
                   <div
                     class="knob-dial"
@@ -486,13 +486,13 @@
               </div>
             </template>
 
-            <template x-for="p in (editor ? editor.toggles : [])" :key="p.key">
+            <template x-for="param in (editor ? editor.toggles : [])" :key="param.key">
               <button
                 type="button" class="toggle-btn"
-                :class="k.bool(p.key) && 'on'"
-                :aria-pressed="k.bool(p.key)"
-                @click="k.toggle(p.key)"
-                x-text="p.label"
+                :class="amp.bool(param.key) && 'on'"
+                :aria-pressed="amp.bool(param.key)"
+                @click="amp.toggle(param.key)"
+                x-text="param.label"
               ></button>
             </template>
           </div>

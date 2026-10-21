@@ -13,14 +13,14 @@ import {
 } from "./blocks.js";
 
 /** The six pedal tiles on the board. */
-function buildBlocks(k) {
+function buildBlocks(amp) {
   return [
-    { id: "boost",  label: "Boost",  sw: "boost_switch",  led: "led_boost",  sub: labelFor("boost_type", k.num("boost_type")) },
-    { id: "mod",    label: "Mod",    sw: "fx1_switch",    led: "led_mod",    sub: labelFor("fx1_type", k.num("fx1_type")) },
-    { id: "fx",     label: "FX",     sw: "fx2_switch",    led: "led_fx",     sub: labelFor("fx2_type", k.num("fx2_type")) },
-    { id: "delay",  label: "Delay",  sw: "delay_switch",  led: "led_delay",  sub: `${labelFor("delay_type", k.num("delay_type"))} · ${k.num("delay_time")}ms` },
-    { id: "reverb", label: "Reverb", sw: "reverb_switch", led: "led_reverb", sub: labelFor("reverb_type", k.num("reverb_type")) },
-    { id: "gate",   label: "Gate",   sw: "noise_suppressor_switch", led: null, sub: `thr ${k.num("noise_suppressor_threshold")}` },
+    { id: "boost",  label: "Boost",  sw: "boost_switch",  led: "led_boost",  sub: labelFor("boost_type", amp.num("boost_type")) },
+    { id: "mod",    label: "Mod",    sw: "fx1_switch",    led: "led_mod",    sub: labelFor("fx1_type", amp.num("fx1_type")) },
+    { id: "fx",     label: "FX",     sw: "fx2_switch",    led: "led_fx",     sub: labelFor("fx2_type", amp.num("fx2_type")) },
+    { id: "delay",  label: "Delay",  sw: "delay_switch",  led: "led_delay",  sub: `${labelFor("delay_type", amp.num("delay_type"))} · ${amp.num("delay_time")}ms` },
+    { id: "reverb", label: "Reverb", sw: "reverb_switch", led: "led_reverb", sub: labelFor("reverb_type", amp.num("reverb_type")) },
+    { id: "gate",   label: "Gate",   sw: "noise_suppressor_switch", led: null, sub: `thr ${amp.num("noise_suppressor_threshold")}` },
   ];
 }
 
@@ -54,17 +54,17 @@ document.addEventListener("alpine:init", () => {
     ],
     titles: BLOCK_TITLES,
 
-    get k() { return Alpine.store("katana"); },
-    get blocks() { return buildBlocks(this.k); },
-    get glowing() { return this.k.bool("bright") || this.k.dirty; },
+    get amp() { return Alpine.store("katana"); },
+    get blocks() { return buildBlocks(this.amp); },
+    get glowing() { return this.amp.bool("bright") || this.amp.dirty; },
     tileColor(label) { return TILE_COLOR[label] ?? "coral"; },
 
-    resync() { this.k.resync(); },
+    resync() { this.amp.resync(); },
     pressFootswitch(fs) {
       // One command, not two: toggling the parameter already switches the
       // block on the amp. Sending the CC as well would fight it, and CC 127
       // always means "on" - pressing an active footswitch would desync.
-      if (fs.block) this.k.toggle(fs.block);
+      if (fs.block) this.amp.toggle(fs.block);
       else transport.sendCC(fs.cc, 127);
     },
 
@@ -72,7 +72,7 @@ document.addEventListener("alpine:init", () => {
     get editor() {
       const id = this.openBlock;
       if (!id) return null;
-      const k = this.k;
+      const amp = this.amp;
       switch (id) {
         case "boost":
           return { enums: enumParams(BOOST_PARAMS), knobs: knobParams(BOOST_PARAMS), toggles: toggleParams(BOOST_PARAMS), note: null };
@@ -80,20 +80,20 @@ document.addEventListener("alpine:init", () => {
         case "fx": {
           const slot = id === "mod" ? 1 : 2;
           const typeKey = `fx${slot}_type`;
-          const name = labelFor(typeKey, k.num(typeKey));
+          const name = labelFor(typeKey, amp.num(typeKey));
           const params = FX_PARAM_MAP[name];
           return {
-            fxSlot: { typeKey, options: FX_TYPE_OPTIONS, current: k.num(typeKey), name },
+            fxSlot: { typeKey, options: FX_TYPE_OPTIONS, current: amp.num(typeKey), name },
             enums: [], toggles: [],
             knobs: params ? knobParams(params) : [],
             note: params ? null : `${name} is selectable but its parameters are not mapped — values read back as unknown, not zero.`,
           };
         }
         case "delay": {
-          const a = delayParams("delay"), b = delayParams("delay2");
+          const delay1 = delayParams("delay"), delay2 = delayParams("delay2");
           return {
-            enums: [...enumParams(a), ...enumParams(b)],
-            knobs: [...knobParams(a), ...knobParams(b)],
+            enums: [...enumParams(delay1), ...enumParams(delay2)],
+            knobs: [...knobParams(delay1), ...knobParams(delay2)],
             toggles: [{ key: "delay2_switch", label: "Delay 2", kind: "toggle" }],
             note: null,
           };

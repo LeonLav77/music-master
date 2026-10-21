@@ -68,7 +68,7 @@ class Patch:
         found = {}
         for param in Param:
             start = param.address() - LIVE_BASE
-            data = [image.get(start + i) for i in range(param.size())]
+            data = [image.get(start + index) for index in range(param.size())]
             if None not in data:
                 found[param] = param.decode(data)
         return found
@@ -90,8 +90,8 @@ class Patch:
 
         # Effect switches last, so a section is configured before it is
         # switched on and you never hear a half-set effect.
-        switches = {p: v for p, v in values.items() if p.endswith("_switch")}
-        rest = {p: v for p, v in values.items() if not p.endswith("_switch")}
+        switches = {param: value for param, value in values.items() if param.endswith("_switch")}
+        rest = {param: value for param, value in values.items() if not param.endswith("_switch")}
 
         applied = 0
         skipped = []

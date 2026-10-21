@@ -38,10 +38,10 @@ export function dragValue(opts) {
         ArrowDown: -1, ArrowLeft: -1,
         PageUp: big, PageDown: -big,
       };
-      const d = map[ev.key];
-      if (d === undefined) return;
+      const step = map[ev.key];
+      if (step === undefined) return;
       ev.preventDefault();
-      opts.set(Math.min(opts.max, Math.max(opts.min, Math.round(opts.get() + d))));
+      opts.set(Math.min(opts.max, Math.max(opts.min, Math.round(opts.get() + step))));
     },
   };
 }
@@ -54,7 +54,7 @@ const KNOB_R = 44;
 
 /** SVG arc path on the knob's track circle. */
 export function knobArc(from, to) {
-  const rad = (a) => ((a - 90) * Math.PI) / 180;
+  const rad = (angle) => ((angle - 90) * Math.PI) / 180;
   const x1 = 50 + KNOB_R * Math.cos(rad(from));
   const y1 = 50 + KNOB_R * Math.sin(rad(from));
   const x2 = 50 + KNOB_R * Math.cos(rad(to));
@@ -81,11 +81,11 @@ export const EQ_RANGE = 24;
 /** Polyline path for a set of band values. `spread` is the vertical share of
  *  the viewBox the full range uses (the mini curve is flatter than the pad). */
 export function eqPath(values, spread = 50) {
-  return EQ_BANDS.map((b, i) => {
-    const v = values[b.key] ?? 0;
-    const x = (i / (EQ_N - 1)) * 100;
-    const y = 50 - (v / EQ_RANGE) * spread;
-    return `${i === 0 ? "M" : "L"} ${x} ${y}`;
+  return EQ_BANDS.map((band, index) => {
+    const value = values[band.key] ?? 0;
+    const across = (index / (EQ_N - 1)) * 100;
+    const height = 50 - (value / EQ_RANGE) * spread;
+    return `${index === 0 ? "M" : "L"} ${across} ${height}`;
   }).join(" ");
 }
 
@@ -105,9 +105,9 @@ export function eqGapFill(prev, idx, clamped, values) {
   if (prev === null || Math.abs(idx - prev) <= 1) return out;
   const from = values[EQ_BANDS[prev].key] ?? 0;
   const step = idx > prev ? 1 : -1;
-  for (let i = prev + step; i !== idx; i += step) {
-    const t = (i - prev) / (idx - prev);
-    out.push({ key: EQ_BANDS[i].key, value: Math.round(from + (clamped - from) * t) });
+  for (let band = prev + step; band !== idx; band += step) {
+    const progress = (band - prev) / (idx - prev);
+    out.push({ key: EQ_BANDS[band].key, value: Math.round(from + (clamped - from) * progress) });
   }
   return out;
 }

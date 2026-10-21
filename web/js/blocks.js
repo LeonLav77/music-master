@@ -139,39 +139,39 @@ export const GATE_PARAMS = [
   { key: "noise_suppressor_release", label: "Release" }
 ];
 
-export const delayParams = (p) => [
-  { key: `${p}_type`, label: "Type" },
-  { key: `${p}_time`, label: "Time", unit: "ms" },
-  { key: `${p}_feedback`, label: "Feedback" },
-  { key: `${p}_high_cut`, label: "High Cut" },
-  { key: `${p}_level`, label: "Level" },
-  { key: `${p}_direct_mix`, label: "Direct" },
+export const delayParams = (prefix) => [
+  { key: `${prefix}_type`, label: "Type" },
+  { key: `${prefix}_time`, label: "Time", unit: "ms" },
+  { key: `${prefix}_feedback`, label: "Feedback" },
+  { key: `${prefix}_high_cut`, label: "High Cut" },
+  { key: `${prefix}_level`, label: "Level" },
+  { key: `${prefix}_direct_mix`, label: "Direct" },
 ];
 
 /** Merge a display label with the amp's real range/kind. */
-export function resolve(p) {
-  const g = PARAM_BY_KEY[p.key];
-  if (!g) throw new Error(`Unknown parameter ${p.key} - not in katana.py's tables`);
+export function resolve(display) {
+  const param = PARAM_BY_KEY[display.key];
+  if (!param) throw new Error(`Unknown parameter ${display.key} - not in params.py`);
   return {
-    key: p.key,
-    label: p.label,
-    kind: g.kind,
-    min: g.min ?? 0,
-    max: g.max ?? 100,
-    unit: p.unit ?? g.unit ?? "",
-    options: g.options ?? [],
-    readOnly: g.readOnly,
+    key: display.key,
+    label: display.label,
+    kind: param.kind,
+    min: param.min ?? 0,
+    max: param.max ?? 100,
+    unit: display.unit ?? param.unit ?? "",
+    options: param.options ?? [],
+    readOnly: param.readOnly,
   };
 }
 
 /** Only the continuous ones get a knob. */
 export function knobParams(params) {
-  return params.map(resolve).filter((p) => p.kind === "range");
+  return params.map(resolve).filter((param) => param.kind === "range");
 }
 export function enumParams(params) {
-  return params.map(resolve).filter((p) => p.kind === "enum");
+  return params.map(resolve).filter((param) => param.kind === "enum");
 }
 export function toggleParams(params) {
-  return params.map(resolve).filter((p) => p.kind === "toggle");
+  return params.map(resolve).filter((param) => param.kind === "toggle");
 }
 

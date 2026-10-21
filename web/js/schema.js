@@ -13,25 +13,25 @@ if (!response.ok) {
 }
 
 /** The server's shape, reshaped into what the UI uses. */
-function fromServer(p) {
-  const param = { key: p.name, kind: p.kind, group: p.group, readOnly: !p.writable };
-  if (p.kind === "enum") {
+function fromServer(entry) {
+  const param = { key: entry.name, kind: entry.kind, group: entry.group, readOnly: !entry.writable };
+  if (entry.kind === "enum") {
     // Values are the amp's own numbers, not list positions - the numbering
     // has gaps (no boost 7, no effect 5/8/11/13/17).
-    param.options = Object.entries(p.options)
+    param.options = Object.entries(entry.options)
       .map(([value, label]) => ({ value: Number(value), label }))
-      .sort((a, b) => a.value - b.value);
+      .sort((first, second) => first.value - second.value);
   } else {
-    param.min = p.min;
-    param.max = p.max;
+    param.min = entry.min;
+    param.max = entry.max;
   }
-  if (p.unit) param.unit = p.unit;
+  if (entry.unit) param.unit = entry.unit;
   return param;
 }
 
 export const PARAMS = (await response.json()).map(fromServer);
 
-export const PARAM_BY_KEY = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
+export const PARAM_BY_KEY = Object.fromEntries(PARAMS.map((param) => [param.key, param]));
 
 /** Options for an enum parameter, or [] if it is not one. */
 export function optionsFor(key) {
@@ -40,7 +40,7 @@ export function optionsFor(key) {
 
 /** The label the amp uses for a value, e.g. labelFor("fx1_type", 6). */
 export function labelFor(key, value) {
-  const found = optionsFor(key).find((o) => o.value === value);
+  const found = optionsFor(key).find((option) => option.value === value);
   return found ? found.label : String(value);
 }
 

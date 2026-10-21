@@ -32,7 +32,6 @@ class Value(BaseModel):
 
 @router.get("/api/parameters")
 async def parameters():
-    """Every parameter with its range, kind and options. Build a UI from this."""
     return SCHEMA
 
 
@@ -126,9 +125,9 @@ async def list_tsl():
             entry = {
                 "index": index,
                 "name": patch.name,
-                "settings": {p.value: settings[p] for p in preview if p in settings},
+                "settings": {param.value: settings[param] for param in preview if param in settings},
             }
-            eq = [settings[p] for p in EQ_BANDS if p in settings]
+            eq = [settings[band] for band in EQ_BANDS if band in settings]
             if len(eq) == len(EQ_BANDS):
                 entry["eq"] = eq
             entries.append(entry)

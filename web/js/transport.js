@@ -146,14 +146,14 @@ export const transport = {
   onMessage(fn) {
     messageListeners.push(fn);
     return () => {
-      messageListeners = messageListeners.filter((l) => l !== fn);
+      messageListeners = messageListeners.filter((listener) => listener !== fn);
     };
   },
 
   onConnectionChange(fn) {
     stateListeners.push(fn);
     return () => {
-      stateListeners = stateListeners.filter((l) => l !== fn);
+      stateListeners = stateListeners.filter((listener) => listener !== fn);
     };
   },
 };

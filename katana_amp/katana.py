@@ -99,7 +99,7 @@ CURRENT_CHANNEL = 0x00010000
 
 def decode_name(raw):
     """A patch name from its bytes: printable ASCII, padding stripped."""
-    return "".join(chr(b) for b in raw if 0x20 <= b < 0x7F).strip()
+    return "".join(chr(byte) for byte in raw if 0x20 <= byte < 0x7F).strip()
 
 
 class Katana:
@@ -186,7 +186,7 @@ class Katana:
                 # so multi-chunk replies reassemble in the right order.
                 start = Katana._decode_address(offset) - Katana._decode_address(address)
                 received[start] = chunk
-                if sum(len(c) for c in received.values()) >= length:
+                if sum(len(piece) for piece in received.values()) >= length:
                     break
 
             if received:
@@ -200,7 +200,7 @@ class Katana:
 
         raise KatanaError(
             f"No reply from the amp for address "
-            f"{' '.join(f'{b:02X}' for b in address)} after {attempts} attempts."
+            f"{' '.join(f'{byte:02X}' for byte in address)} after {attempts} attempts."
         )
 
     def write(self, address, data):
@@ -212,8 +212,8 @@ class Katana:
     @staticmethod
     def _decode_address(address):
         """Collapse a 4-byte 7-bit address into a single integer."""
-        a, b, c, d = address
-        return (a << 21) | (b << 14) | (c << 7) | d
+        first, second, third, fourth = address
+        return (first << 21) | (second << 14) | (third << 7) | fourth
 
     @staticmethod
     def _encode_address(value):

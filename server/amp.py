@@ -121,7 +121,10 @@ def refresh():
     amp = controls.connect()
 
     # Group the single-byte settings into runs of consecutive addresses.
-    singles = sorted((p for p in Param if p.size() == 1), key=lambda p: p.address())
+    singles = sorted(
+        (param for param in Param if param.size() == 1),
+        key=lambda param: param.address(),
+    )
     runs = []
     for param in singles:
         if runs and param.address() == runs[-1][0] + len(runs[-1][1]):

@@ -39,8 +39,8 @@ const offlineDefaults = {
 
 // Pantera-style reference curve from the control reference.
 const eqSeed = [14, 14, 12, -6, -12, -15, -7, 8, 10, 11];
-EQ_BANDS.forEach((b, i) => {
-  offlineDefaults[b.key] = eqSeed[i] ?? 0;
+EQ_BANDS.forEach((band, index) => {
+  offlineDefaults[band.key] = eqSeed[index] ?? 0;
 });
 
 /** The amp reports 0/1 for switches; the UI wants real booleans. */
@@ -84,7 +84,7 @@ export function createKatanaStore() {
     ampConnected: false,
     busy: null,
     channel: "a1",
-    channelNames: Object.fromEntries(CHANNELS.map((c) => [c.id, c.name])),
+    channelNames: Object.fromEntries(CHANNELS.map((channel) => [channel.id, channel.name])),
     syncing: false,
     lastSync: null,
     dirty: false,
@@ -102,8 +102,8 @@ export function createKatanaStore() {
       return this.state[key] === true;
     },
     led(key) {
-      const v = this.state[key];
-      return LED_COLORS[typeof v === "number" ? v : 0] ?? "off";
+      const value = this.state[key];
+      return LED_COLORS[typeof value === "number" ? value : 0] ?? "off";
     },
     /** One word for the indicator: what is actually wrong, if anything.
      *
@@ -200,7 +200,7 @@ export function createKatanaStore() {
     },
 
     async saveToChannel(id) {
-      const pc = CHANNELS.find((c) => c.id === id)?.pc;
+      const pc = CHANNELS.find((channel) => channel.id === id)?.pc;
       if (pc === undefined) return;
       const result = await this.runBusy(`saving to ${id.toUpperCase()}`, () =>
         transport.saveToPatch(pc),
@@ -226,9 +226,9 @@ export function createKatanaStore() {
     },
 
     _mergeNames(names) {
-      CHANNELS.forEach((c) => {
-        const n = names[String(c.pc)];
-        if (n) this.channelNames[c.id] = n;
+      CHANNELS.forEach((channel) => {
+        const name = names[String(channel.pc)];
+        if (name) this.channelNames[channel.id] = name;
       });
     },
 
@@ -245,11 +245,11 @@ export function createKatanaStore() {
 
     /** Open the socket and take the amp's real state as the truth. */
     init() {
-      transport.onConnectionChange((s) => {
-        this.connection = s;
+      transport.onConnectionChange((state) => {
+        this.connection = state;
         // A dropped socket means we have stopped hearing about the amp, not
         // that the amp is gone - but we can no longer claim it is there.
-        if (s !== "open") this.ampConnected = false;
+        if (state !== "open") this.ampConnected = false;
       });
 
       transport.onMessage((message) => {

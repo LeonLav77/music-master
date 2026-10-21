@@ -20,10 +20,6 @@ router = APIRouter()
 
 
 async def _apply_parameter(name, value, origin=None):
-    """Validate and write one parameter, then tell everyone else.
-
-    `name` arrives from the browser as a string, e.g. "gain".
-    """
     try:
         param = Param(name)               # like Laravel's Param::from("gain")
     except ValueError:
