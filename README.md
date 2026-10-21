@@ -15,9 +15,10 @@ katana_amp/        the library - no printing, no prompts, reusable
   tsl.py           read and load BOSS Tone Studio .tsl files
 server/            FastAPI app: amp API and the UI on one port
   app.py           creates the app and plugs the parts in
-  amp.py           the link to the amp: lock, cache, reconnect loop, broadcast
+  amp.py           the link to the amp: lock, cache, reconnect loop
+  browsers.py      the connected browsers, and broadcasting to them
   routes.py        the HTTP endpoints
-  live.py          the WebSocket: knob changes and channel switches
+  websocket.py     the WebSocket: knob changes and channel switches
 web/               the control surface - plain HTML, CSS and JS, no build step
 docs/
   CONTROLS.md      every parameter the amp exposes, with ranges
@@ -378,7 +379,7 @@ The page is same-origin with the API, so it needs no configuration
 wherever you open it from.
 
 `server/amp.py` is the link to the amp and knows nothing about a UI;
-`server/routes.py` (HTTP) and `server/live.py` (WebSocket) are built on it,
+`server/routes.py` (HTTP) and `server/websocket.py` (WebSocket) are built on it,
 and `server/app.py` plugs them in and serves `web/` alongside them.
 
 It talks to the server through `web/js/transport.js` and nothing else —

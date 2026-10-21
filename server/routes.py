@@ -1,7 +1,7 @@
 """The HTTP endpoints: one-off actions and reads.
 
 Live changes - knobs, channel switches - go over the WebSocket instead
-(live.py). Everything here goes through the shared amp link in amp.py.
+(websocket.py). Everything here goes through the shared amp link in amp.py.
 """
 
 from pathlib import Path
@@ -13,7 +13,7 @@ from katana_amp import controls
 from katana_amp import tsl
 from katana_amp.katana import CHANNELS, KatanaError
 from katana_amp.param import Param
-from server import amp
+from server import amp, browsers
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,7 +48,7 @@ async def status():
 async def refresh():
     async with amp.lock:
         values = await amp.call(amp.refresh, read=True)
-    await amp.broadcast(amp.state_message())
+    await browsers.broadcast(amp.state_message())
     return values
 
 
@@ -76,7 +76,7 @@ async def save_patch(number: int):
             names = await amp.call(controls.get_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
-    await amp.broadcast({"type": "patches", "names": names})
+    await browsers.broadcast({"type": "patches", "names": names})
     return {"patch": number, "bytes": written, "names": names}
 
 
@@ -158,7 +158,7 @@ async def load_tsl(filename: str, index: int):
             values = await amp.call(amp.refresh, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
-    await amp.broadcast(
+    await browsers.broadcast(
         {"type": "patch", "name": patches[index].name, "values": values}
     )
     return {"name": patches[index].name, "applied": applied, "skipped": skipped}

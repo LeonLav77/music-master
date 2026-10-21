@@ -14,7 +14,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from katana_amp import controls
 from katana_amp.katana import CHANNELS, KatanaError
 from katana_amp.param import Param
-from server import amp
+from server import amp, browsers
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ async def _apply_parameter(name, value, origin=None):
         await amp.call(controls.set_parameter, param, value)
 
     amp.cache[name] = value
-    await amp.broadcast(
+    await browsers.broadcast(
         {"type": "parameter", "name": name, "value": value}, skip=origin
     )
     return value
@@ -59,14 +59,14 @@ async def _select_channel(name):
         values = await amp.call(amp.refresh, read=True)
 
     # Everyone needs this, including whoever asked - it is a whole new state.
-    await amp.broadcast({"type": "channel", "channel": name, "values": values})
+    await browsers.broadcast({"type": "channel", "channel": name, "values": values})
     return values
 
 
 @router.websocket("/ws")
 async def websocket(client: WebSocket):
     await client.accept()
-    amp.clients.add(client)
+    browsers.connected.add(client)
 
     try:
         if not amp.cache:
@@ -110,4 +110,4 @@ async def websocket(client: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        amp.clients.discard(client)
+        browsers.connected.discard(client)

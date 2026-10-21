@@ -4,14 +4,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from server import amp, live, routes
+from server import amp, routes, websocket
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 # amp.lifespan runs the loop that finds the amp while the server is up.
 app = FastAPI(title="Katana MkII", lifespan=amp.lifespan)
 app.include_router(routes.router)   # HTTP endpoints
-app.include_router(live.router)     # the WebSocket
+app.include_router(websocket.router)  # the WebSocket
 
 # Mounted last: "/" matches every URL, so it would hide the API if it came
 # first.
