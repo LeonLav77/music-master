@@ -4,35 +4,33 @@
 // only the behaviour and the derived geometry, so the markup stays readable.
 
 import {
-  dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES, KNOB_TICKS,
-  eqPath, eqHit, eqGapFill, EQ_N, EQ_RANGE,
+  dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES,
+  eqPath, eqHit, eqGapFill,
 } from "./controls.js";
 import { EQ_BANDS, AMP_MODEL_OPTIONS } from "./schema.js";
 import { transport } from "./transport.js";
 
 const store = () => Alpine.store("katana");
 
-/** One amp knob. `key` is the parameter; omit `onSet` for a read-only knob. */
+/** One amp knob. `key` is the parameter; pass `disabled` for a read-only one. */
 export function knob(key, label, { accent = "steel", size = "md", min = 0, max = 100, unit = "", disabled = false } = {}) {
   return {
     key, label, accent, size, min, max, unit, disabled,
     sizePx: KNOB_SIZES[size],
-    ticks: KNOB_TICKS,
     trackPath: knobArc(KNOB_START, KNOB_START + KNOB_SWEEP),
     capId: `cap-${key}`,
 
     get value() { return store().num(this.key); },
     get angle() { return knobAngle(this.value, this.min, this.max); },
     get valuePath() { return knobArc(KNOB_START, this.angle + 0.01); },
-    get readout() { return this.disabled ? `${Math.round(this.value)}${this.unit}` : `${Math.round(this.value)}${this.unit}`; },
-    get interactive() { return !this.disabled; },
+    get readout() { return `${Math.round(this.value)}${this.unit}`; },
 
     drag: null,
     init() {
       const self = this;
       this.drag = dragValue({
         min, max,
-        travel: size === "lg" ? 260 : 200,
+        travel: 200,
         holdKey: key,
         hold: (k, h) => store().hold(k, h),
         get: () => store().num(self.key),
@@ -168,13 +166,6 @@ export function eqPad() {
     get on() { return store().bool("eq_switch"); },
     get curve() { return eqPath(this.values, 50); },
     get fill() { return `${this.curve} L 100 100 L 0 100 Z`; },
-    points() {
-      return EQ_BANDS.map((b, i) => ({
-        key: b.key, label: b.label, v: this.values[b.key] ?? 0,
-        x: (i / (EQ_N - 1)) * 100,
-        y: 50 - ((this.values[b.key] ?? 0) / EQ_RANGE) * 50,
-      }));
-    },
 
     apply(ev) {
       const r = this.$refs.pad.getBoundingClientRect();
@@ -262,19 +253,18 @@ export function wahRock() {
       this.running = true;
       // The gesture runs for seconds and holds the amp lock; show it as busy
       // so the surface does not look frozen and nothing else is sent.
-      try {
-        await Alpine.store("katana").runBusy(
-          `wah ${this.summary}`,
-          () => transport.rockWah({
+      // The error is caught in here: runBusy swallows anything that escapes.
+      await store().runBusy(`wah ${this.summary}`, async () => {
+        try {
+          await transport.rockWah({
             intervals: this.intervals, low: this.low, high: this.high,
             seconds: this.seconds, bounce: this.bounce,
-          }),
-        );
-      } catch (e) {
-        this.error = String(e.message ?? e);
-      } finally {
-        this.running = false;
-      }
+          });
+        } catch (e) {
+          this.error = String(e.message ?? e);
+        }
+      });
+      this.running = false;
     },
   };
 }

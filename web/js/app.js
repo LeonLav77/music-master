@@ -6,7 +6,7 @@
 import { createKatanaStore } from "./store.js";
 import { knob, ampDial, treadle, eqPad, channelRail, wahRock } from "./components.js";
 import { transport } from "./transport.js";
-import { CHANNELS, FOOTSWITCHES, EQ_BANDS, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
+import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
 import {
   BLOCK_TITLES, FX_PARAM_MAP, BOOST_PARAMS, REVERB_PARAMS, WAH_PARAMS,
   GATE_PARAMS, delayParams, knobParams, enumParams, toggleParams,
@@ -45,7 +45,6 @@ document.addEventListener("alpine:init", () => {
     openBlock: null,
     channels: CHANNELS,
     footswitches: FOOTSWITCHES,
-    eqBands: EQ_BANDS,
     ampKnobs: [
       { key: "gain", label: "Gain", accent: "ember" },
       { key: "bass", label: "Bass", accent: "steel" },
@@ -110,7 +109,7 @@ document.addEventListener("alpine:init", () => {
         case "wah":
           return { enums: enumParams(WAH_PARAMS), knobs: knobParams(WAH_PARAMS), toggles: [], note: null };
         case "eq":
-          return { enums: [], knobs: knobParams([{ key: "eq_level", label: "EQ Level" }]), toggles: [], note: null, showEq: true };
+          return { enums: [], knobs: knobParams([{ key: "eq_level", label: "EQ Level" }]), toggles: [], note: null };
         default:
           return null;
       }

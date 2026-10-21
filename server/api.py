@@ -4,19 +4,12 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from katana_amp import controls
 from katana_amp import tsl
-from katana_amp.katana import (
-    CHANNELS,
-    EQ_BANDS_ORDER,
-    PARAMETERS,
-    WIDE_PARAMETERS,
-    KatanaError,
-    describe_parameters,
-    from_amp,
-)
+from katana_amp.katana import CHANNELS, KatanaError
+from katana_amp.params import EQ_BANDS, Param, describe_parameters
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +18,6 @@ PATCH_DIR = ROOT / "patches"
 router = APIRouter()
 
 SCHEMA = describe_parameters()
-SCHEMA_BY_NAME = {entry["name"]: entry for entry in SCHEMA}
 
 _lock = asyncio.Lock()
 _cache = {}
@@ -52,13 +44,11 @@ async def _broadcast(message, skip=None):
             _clients.discard(client)
 
 
-async def _amp_call(fn, *args):
-    """Run a blocking amp operation, tracking what it says about the link.
+async def _amp_call(fn, *args, read=False):
+    """Run a blocking amp call in a thread. A failure means the amp is gone.
 
-    Every path to the amp goes through here so that connection state is a
-    consequence of real traffic rather than something each handler has to
-    remember to update. A failure drops the port and wakes the reconnect
-    loop; the next call opens a fresh one.
+    Only a read proves the amp is there: writes get no answer, so they
+    succeed even with the amp switched off. Pass read=True for those.
     """
     try:
         result = await asyncio.to_thread(fn, *args)
@@ -67,15 +57,15 @@ async def _amp_call(fn, *args):
         _reconnect.set()
         await _set_online(False)
         raise
-    await _set_online(True)
+    if read:
+        await _set_online(True)
     return result
 
 
 async def _set_online(online):
     """Record whether the amp is answering, and tell clients when it flips.
 
-    Only edges are broadcast - a probe every two seconds must not turn into
-    a message every two seconds.
+    Only changes are broadcast, not every call that confirms the same state.
     """
     global _amp_online
     if _amp_online == online:
@@ -92,23 +82,7 @@ def _probe():
     cheapest thing that actually settles it.
     """
     amp = controls.connect()
-    amp.read(amp._encode_address(PARAMETERS["gain"][0]), 1, attempts=1)
-
-
-def _read(name):
-    """Read one parameter straight from the amp."""
-    amp = controls.connect()
-    if name in WIDE_PARAMETERS:
-        return amp.get_wide_parameter(name)
-    return amp.get_parameter(name)
-
-
-def _write(name, value):
-    amp = controls.connect()
-    if name in WIDE_PARAMETERS:
-        amp.set_wide_parameter(name, value)
-    else:
-        amp.set_parameter(name, value)
+    amp.read(amp._encode_address(Param.GAIN.address()), 1, attempts=1)
 
 
 def _refresh():
@@ -120,36 +94,35 @@ def _refresh():
     """
     amp = controls.connect()
 
-    # Group the single-byte parameters into runs of consecutive addresses.
-    singles = sorted(
-        (address, name) for name, (address, _, _) in PARAMETERS.items()
-    )
+    # Group the single-byte settings into runs of consecutive addresses.
+    singles = sorted((p for p in Param if p.size() == 1), key=lambda p: p.address())
     runs = []
-    for address, name in singles:
-        if runs and address == runs[-1][0] + len(runs[-1][1]):
-            runs[-1][1].append(name)
+    for param in singles:
+        if runs and param.address() == runs[-1][0] + len(runs[-1][1]):
+            runs[-1][1].append(param)
         else:
-            runs.append((address, [name]))
+            runs.append((param.address(), [param]))
 
     found = {}
-    for start, names in runs:
+    for start, params in runs:
         try:
             # One attempt: a block the amp will not answer for is a normal
             # outcome here (effect blocks stay silent unless loaded), and
             # retrying every one of them dominates the refresh.
-            data = amp.read(amp._encode_address(start), len(names), attempts=1)
+            data = amp.read(amp._encode_address(start), len(params), attempts=1)
         except KatanaError:
             continue
-        for offset, name in enumerate(names):
+        for offset, param in enumerate(params):
             if offset < len(data):
-                found[name] = from_amp(name, data[offset])
+                found[param.value] = param.decode([data[offset]])
 
-    for name, (address, _, _) in WIDE_PARAMETERS.items():
-        try:
-            high, low = amp.read(amp._encode_address(address), 2, attempts=1)
-            found[name] = high * 128 + low
-        except KatanaError:
-            continue
+    # The two-byte ones (delay times), each on its own.
+    for param in Param:
+        if param.size() == 2:
+            try:
+                found[param.value] = amp.get_parameter(param)
+            except KatanaError:
+                continue
 
     # Individual blocks going silent is normal - effect blocks stay quiet
     # until they are loaded. Every single block going silent is not: that is
@@ -171,22 +144,6 @@ async def parameters():
     return SCHEMA
 
 
-@router.get("/api/state")
-async def state():
-    """Current value of everything, from cache.
-
-    A cold cache with no amp is not an error - it is a rig that has not been
-    switched on yet. Answer with what we have and let the caller see
-    `connected` rather than failing the request; the reconnect loop is
-    already working on it.
-    """
-    if not _cache:
-        async with _lock:
-            with contextlib.suppress(KatanaError):
-                await _amp_call(_refresh)
-    return _cache
-
-
 @router.get("/api/status")
 async def status():
     """Is the amp there? Cheap enough for a health check to hit repeatedly.
@@ -205,7 +162,7 @@ async def status():
 async def refresh():
     """Re-read the amp into the cache. Use after someone turns a knob."""
     async with _lock:
-        values = await _amp_call(_refresh)
+        values = await _amp_call(_refresh, read=True)
     await _broadcast({"type": "state", "values": values})
     return values
 
@@ -213,20 +170,22 @@ async def refresh():
 # --- Parameters ------------------------------------------------------------
 
 async def _apply_parameter(name, value, origin=None):
-    """Validate and write one parameter, then tell everyone. Shared by REST
-    and the WebSocket so both behave identically."""
-    entry = SCHEMA_BY_NAME.get(name)
-    if entry is None:
+    """Validate and write one parameter, then tell everyone else.
+
+    `name` arrives from the browser as a string, e.g. "gain".
+    """
+    try:
+        param = Param(name)               # like Laravel's Param::from("gain")
+    except ValueError:
         raise KatanaError(f"Unknown parameter {name!r}")
-    if not entry["writable"]:
+    if not param.is_writable():
         raise KatanaError(f"{name} is read-only on this amp")
-    if not entry["min"] <= value <= entry["max"]:
-        raise KatanaError(
-            f"{name} must be between {entry['min']} and {entry['max']}"
-        )
+    low, high = param.range()
+    if not low <= value <= high:
+        raise KatanaError(f"{name} must be between {low} and {high}")
 
     async with _lock:
-        await _amp_call(_write, name, value)
+        await _amp_call(controls.set_parameter, param, value)
 
     _cache[name] = value
     await _broadcast(
@@ -235,54 +194,25 @@ async def _apply_parameter(name, value, origin=None):
     return value
 
 
-@router.get("/api/parameter/{name}")
-async def get_parameter(name: str):
-    if name not in SCHEMA_BY_NAME:
-        raise HTTPException(404, f"Unknown parameter {name!r}")
-    async with _lock:
-        try:
-            value = await _amp_call(_read, name)
-        except KatanaError as exc:
-            raise HTTPException(503, str(exc))
-    _cache[name] = value
-    return {"name": name, "value": value}
-
-
-@router.put("/api/parameter/{name}")
-async def set_parameter(name: str, body: Value):
-    """Set one parameter. Fine for one-off changes; for a slider being
-    dragged, send over the WebSocket instead - see /ws."""
-    entry = SCHEMA_BY_NAME.get(name)
-    if entry is None:
-        raise HTTPException(404, f"Unknown parameter {name!r}")
-    if not entry["writable"]:
-        raise HTTPException(409, f"{name} is read-only on this amp")
-    if not entry["min"] <= body.value <= entry["max"]:
-        raise HTTPException(
-            422, f"{name} must be between {entry['min']} and {entry['max']}"
-        )
-    try:
-        await _apply_parameter(name, body.value)
-    except KatanaError as exc:
-        raise HTTPException(503, str(exc))
-    return {"name": name, "value": body.value}
-
-
 # --- Channels --------------------------------------------------------------
 
 @router.get("/api/channels")
 async def channels():
     """The selectable channels, and the names of the stored patches."""
     async with _lock:
-        names = await _amp_call(controls.get_patch_names)
+        try:
+            names = await _amp_call(controls.get_patch_names, read=True)
+        except KatanaError as exc:
+            raise HTTPException(503, str(exc))
     return {"channels": CHANNELS, "patches": names}
 
 
 class Sweep(BaseModel):
-    start: int = 0
-    end: int = 100
-    steps: int = 25
-    delay: float = 0.04
+    start: int = Field(0, ge=0, le=100)
+    end: int = Field(100, ge=0, le=100)
+    steps: int = Field(25, ge=2, le=200)
+    # Bounded, like rock's total: the lock is held for the whole sweep.
+    delay: float = Field(0.04, ge=0, le=0.5)
 
 
 class Rock(BaseModel):
@@ -295,11 +225,19 @@ class Rock(BaseModel):
     bounce: bool = True
 
 
+async def _wah_moved(position):
+    """After a server-side wah gesture: the pedal is on, at `position`."""
+    _cache["wah_position"] = position
+    _cache["pedal_switch"] = 1
+    await _broadcast({"type": "parameter", "name": "wah_position", "value": position})
+    await _broadcast({"type": "parameter", "name": "pedal_switch", "value": 1})
+
+
 @router.post("/api/wah/rock")
 async def wah_rock(body: Rock = Rock()):
     """Rock the treadle repeatedly - "4 intervals of 0 to 50 in 2.3 seconds".
 
-    Held server-side for the whole gesture, like /api/wah/sweep: this is
+    Driven server-side for the whole gesture, like /api/wah/sweep: this is
     hundreds of MIDI writes and stepping it from the browser would mean an
     HTTP round-trip each.
 
@@ -323,18 +261,14 @@ async def wah_rock(body: Rock = Rock()):
 
     async with _lock:
         try:
-            await _amp_call(
+            final = await _amp_call(
                 controls.rock_wah,
                 body.intervals, body.low, body.high, body.seconds, body.bounce,
             )
-            final = await _amp_call(_read, "wah_position")
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
 
-    _cache["wah_position"] = final
-    _cache["pedal_switch"] = 1
-    await _broadcast({"type": "parameter", "name": "wah_position", "value": final})
-    await _broadcast({"type": "parameter", "name": "pedal_switch", "value": 1})
+    await _wah_moved(final)
     return {"position": final, "intervals": body.intervals,
             "seconds": body.seconds, "total": round(body.intervals * body.seconds, 2)}
 
@@ -348,23 +282,19 @@ async def wah_sweep(body: Sweep = Sweep()):
     """
     async with _lock:
         try:
-            await _amp_call(
+            final = await _amp_call(
                 controls.sweep_wah, body.start, body.end, body.steps, body.delay
             )
-            final = await _amp_call(_read, "wah_position")
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
 
-    _cache["wah_position"] = final
-    _cache["pedal_switch"] = 1
-    await _broadcast({"type": "parameter", "name": "wah_position", "value": final})
-    await _broadcast({"type": "parameter", "name": "pedal_switch", "value": 1})
+    await _wah_moved(final)
     return {"position": final}
 
 
 async def _select_channel(name, origin=None):
-    """Switch channel and re-read. Shared by REST and the WebSocket."""
-    if name.lower() not in CHANNELS:
+    """Switch channel and re-read."""
+    if not isinstance(name, str) or name.lower() not in CHANNELS:
         raise KatanaError(f"Unknown channel {name!r}")
 
     async with _lock:
@@ -375,20 +305,11 @@ async def _select_channel(name, origin=None):
         await asyncio.sleep(0.5)
         await _amp_call(controls.select_channel, name)
         await asyncio.sleep(1.2)
-        values = await _amp_call(_refresh)
+        values = await _amp_call(_refresh, read=True)
 
     # Everyone needs this, including whoever asked - it is a whole new state.
     await _broadcast({"type": "channel", "channel": name, "values": values})
     return values
-
-
-@router.post("/api/channel/{name}")
-async def select_channel(name: str):
-    try:
-        values = await _select_channel(name)
-    except KatanaError as exc:
-        raise HTTPException(404 if "Unknown channel" in str(exc) else 503, str(exc))
-    return {"channel": name, "values": values}
 
 
 @router.post("/api/patch/{number}")
@@ -399,7 +320,7 @@ async def save_patch(number: int):
     async with _lock:
         try:
             written = await _amp_call(controls.save_to_patch, number)
-            names = await _amp_call(controls.get_patch_names)
+            names = await _amp_call(controls.get_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     await _broadcast({"type": "patches", "names": names})
@@ -435,13 +356,13 @@ async def list_tsl():
             continue
         # A preview of each patch, so the browser can show what a tone is
         # before loading it. Cheap - the file is already parsed.
-        preview_keys = (
-            "amp_type", "gain", "volume", "bass", "middle", "treble",
-            "presence", "boost_switch", "boost_type", "boost_drive",
-            "delay_switch", "delay_type", "delay_time",
-            "reverb_switch", "reverb_type", "reverb_level",
-            "fx1_switch", "fx1_type", "fx2_switch", "fx2_type",
-            "noise_suppressor_switch",
+        preview = (
+            Param.AMP_TYPE, Param.GAIN, Param.VOLUME, Param.BASS, Param.MIDDLE,
+            Param.TREBLE, Param.PRESENCE, Param.BOOST_SWITCH, Param.BOOST_TYPE,
+            Param.BOOST_DRIVE, Param.DELAY_SWITCH, Param.DELAY_TYPE,
+            Param.DELAY_TIME, Param.REVERB_SWITCH, Param.REVERB_TYPE,
+            Param.REVERB_LEVEL, Param.FX1_SWITCH, Param.FX1_TYPE,
+            Param.FX2_SWITCH, Param.FX2_TYPE, Param.NOISE_SUPPRESSOR_SWITCH,
         )
         entries = []
         for index, patch in enumerate(patches):
@@ -449,16 +370,10 @@ async def list_tsl():
             entry = {
                 "index": index,
                 "name": patch.name,
-                "settings": {
-                    key: settings[key] for key in preview_keys if key in settings
-                },
+                "settings": {p.value: settings[p] for p in preview if p in settings},
             }
-            eq = [
-                settings[key]
-                for key in EQ_BANDS_ORDER
-                if key in settings
-            ]
-            if len(eq) == len(EQ_BANDS_ORDER):
+            eq = [settings[p] for p in EQ_BANDS if p in settings]
+            if len(eq) == len(EQ_BANDS):
                 entry["eq"] = eq
             entries.append(entry)
 
@@ -482,8 +397,11 @@ async def load_tsl(filename: str, index: int):
         raise HTTPException(404, f"{filename} has no patch {index}")
 
     async with _lock:
-        applied, skipped = await _amp_call(patches[index].apply)
-        values = await _amp_call(_refresh)
+        try:
+            applied, skipped = await _amp_call(patches[index].apply)
+            values = await _amp_call(_refresh, read=True)
+        except KatanaError as exc:
+            raise HTTPException(503, str(exc))
     await _broadcast(
         {"type": "patch", "name": patches[index].name, "values": values}
     )
@@ -494,16 +412,20 @@ async def load_tsl(filename: str, index: int):
 
 @router.websocket("/ws")
 async def websocket(client: WebSocket):
-    """Push state changes as they happen.
+    """The live connection: every change to the amp goes through here.
 
-    Sends the whole state on connect, then one message per change:
+    Sends on connect, then whenever something changes:
+      {"type": "amp",       "connected": true}
       {"type": "state",     "values": {...}}
       {"type": "parameter", "name": "gain", "value": 75}
       {"type": "channel",   "channel": "a1", "values": {...}}
+      {"type": "patch",     "name": "...", "values": {...}}
+      {"type": "patches",   "names": {"1": "...", ...}}
+      {"type": "error",     "detail": "..."}
 
-    Accepts changes too, which is the right way to drive a slider - no
-    per-message HTTP overhead, and nothing echoed back to the sender:
-      {"type": "set", "name": "gain", "value": 75}
+    Accepts:
+      {"type": "set",     "name": "gain", "value": 75}
+      {"type": "channel", "name": "b2"}
     """
     await client.accept()
     _clients.add(client)
@@ -514,7 +436,7 @@ async def websocket(client: WebSocket):
                 # reconnect loop will push the state the moment it appears,
                 # and a client that stays connected sees that happen.
                 with contextlib.suppress(KatanaError):
-                    await _amp_call(_refresh)
+                    await _amp_call(_refresh, read=True)
         await client.send_text(
             json.dumps({"type": "amp", "connected": _amp_online})
         )
@@ -525,6 +447,8 @@ async def websocket(client: WebSocket):
             try:
                 message = json.loads(raw)
             except ValueError:
+                continue
+            if not isinstance(message, dict):
                 continue
 
             kind = message.get("type")
@@ -566,27 +490,17 @@ async def _reconnect_loop():
         names = None
         try:
             async with _lock:
-                await _amp_call(_probe)
-                # Reaching the amp says nothing about what changed while it
-                # was away - it may have come back on a different channel.
-                values = await _amp_call(_refresh)
-                # The patch names too. A client that loaded while the amp
-                # was missing got nothing from /api/channels - that endpoint
-                # reads the amp directly and simply fails with none - and it
-                # never asks again, so without this the rail keeps showing
-                # the placeholder names from the schema for the whole
-                # session. Which is exactly the case this loop exists for:
-                # the Pi powered up before the amp.
+                await _amp_call(_probe, read=True)
+                # It may have come back on a different channel: re-read it.
+                values = await _amp_call(_refresh, read=True)
+                # And the patch names, which a page that loaded while the
+                # amp was missing never got.
                 with contextlib.suppress(KatanaError):
-                    names = await _amp_call(controls.get_patch_names)
-        except KatanaError:
-            await asyncio.sleep(RECONNECT_INTERVAL)
-            continue
-        except asyncio.CancelledError:
-            raise
+                    names = await _amp_call(controls.get_patch_names, read=True)
         except Exception:
-            # An unexpected failure must not kill the loop - that would
-            # leave the server permanently unable to find the amp again.
+            # Not there yet - or something unexpected, which must not kill
+            # the loop either. (A shutdown's CancelledError is not an
+            # Exception, so it still stops the loop.)
             await asyncio.sleep(RECONNECT_INTERVAL)
             continue
 

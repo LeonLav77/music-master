@@ -1,8 +1,5 @@
 // Pointer interactions and the geometry the SVG controls draw from.
 //
-// This is the part that carried the most risk in the port: pointer capture,
-// axis mapping, snapping and the EQ gap-fill all had to keep behaving the
-// same on the panel's touchscreen.
 
 import { EQ_BANDS } from "./schema.js";
 
@@ -12,25 +9,22 @@ import { EQ_BANDS } from "./schema.js";
  *  lazily through getters so the current value is always the live one -
  *  Alpine has no dependency array to re-close over. */
 export function dragValue(opts) {
-  const start = { p: 0, v: 0 };
-  const axis = opts.axis ?? "y";
+  // Vertical: drag up to turn up, `travel` pixels for the full range.
+  const start = { y: 0, v: 0 };
   const travel = opts.travel ?? 220;
-  const step = opts.step ?? 1;
 
   return {
     down(ev) {
       ev.target.setPointerCapture?.(ev.pointerId);
-      start.p = axis === "y" ? ev.clientY : ev.clientX;
+      start.y = ev.clientY;
       start.v = opts.get();
       if (opts.holdKey) opts.hold(opts.holdKey, true);
     },
     move(ev) {
       if (!ev.target.hasPointerCapture?.(ev.pointerId)) return;
-      const cur = axis === "y" ? ev.clientY : ev.clientX;
-      const delta = axis === "y" ? start.p - cur : cur - start.p;
+      const delta = start.y - ev.clientY;
       const raw = start.v + (delta / travel) * (opts.max - opts.min);
-      const snapped = Math.round(raw / step) * step;
-      const next = Math.min(opts.max, Math.max(opts.min, snapped));
+      const next = Math.min(opts.max, Math.max(opts.min, Math.round(raw)));
       if (next !== opts.get()) opts.set(next);
     },
     up(ev) {
@@ -40,8 +34,8 @@ export function dragValue(opts) {
     key(ev) {
       const big = (opts.max - opts.min) / 10;
       const map = {
-        ArrowUp: step, ArrowRight: step,
-        ArrowDown: -step, ArrowLeft: -step,
+        ArrowUp: 1, ArrowRight: 1,
+        ArrowDown: -1, ArrowLeft: -1,
         PageUp: big, PageDown: -big,
       };
       const d = map[ev.key];
@@ -77,11 +71,7 @@ export function knobAngle(value, min, max) {
 export const KNOB_SIZES = {
   sm: "clamp(60px, 5.6vw, 104px)",
   md: "clamp(96px, 7.4vw, 136px)",
-  lg: "clamp(128px, 9vw, 168px)",
 };
-
-/** The 24 tick marks around the cap. */
-export const KNOB_TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
 
 // ---- EQ pad ----
 

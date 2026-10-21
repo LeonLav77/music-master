@@ -1,14 +1,11 @@
 // The Katana store, as an Alpine global store.
 //
-// Alpine's reactivity is proxy-based and per-property, so unlike the React
-// context this replaced, touching one parameter only re-renders the bindings
-// that actually read it. There is no provider and no memoisation to keep in
-// sync - `state` is a plain object and writing to a key is the update.
+// Alpine's reactivity is proxy-based and per-property, so touching one
+// parameter only re-renders the bindings that actually read it. `state` is
+// a plain object and writing to a key is the update.
 
 import { transport } from "./transport.js";
 import { PARAM_BY_KEY, CHANNELS, EQ_BANDS, LED_COLORS } from "./schema.js";
-
-export const UNKNOWN = "unknown";
 
 const offlineDefaults = {
   amp_type: 7, gain: 78, bass: 62, middle: 34, treble: 71, presence: 58,
@@ -85,7 +82,6 @@ export function createKatanaStore() {
     // reachable with the amp switched off, and that has to look different
     // from a server that is not there at all.
     ampConnected: false,
-    live: false,
     busy: null,
     channel: "a1",
     channelNames: Object.fromEntries(CHANNELS.map((c) => [c.id, c.name])),
@@ -99,9 +95,6 @@ export function createKatanaStore() {
     _held: new Set(),
 
     // ---- reads ----
-    get(key) {
-      return key in this.state ? this.state[key] : UNKNOWN;
-    },
     num(key) {
       return typeof this.state[key] === "number" ? this.state[key] : 0;
     },
@@ -112,7 +105,6 @@ export function createKatanaStore() {
       const v = this.state[key];
       return LED_COLORS[typeof v === "number" ? v : 0] ?? "off";
     },
-    /** Formatted "synced HH:MM", or never. */
     /** One word for the indicator: what is actually wrong, if anything.
      *
      * The three states are genuinely different problems: no server (the Pi
@@ -136,6 +128,7 @@ export function createKatanaStore() {
       return this.ampConnected ? "open" : "waiting";
     },
 
+    /** Formatted "synced HH:MM", or never. */
     get syncLabel() {
       return this.lastSync
         ? `synced ${this.lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
@@ -223,7 +216,6 @@ export function createKatanaStore() {
       try {
         const values = await transport.resync();
         Object.assign(this.state, decode(values));
-        this.live = true;
         this.lastSync = new Date();
         this.dirty = false;
       } catch (error) {
@@ -248,7 +240,6 @@ export function createKatanaStore() {
         if (key in this.state) delete next[key];
       });
       Object.assign(this.state, next);
-      this.live = true;
       this.lastSync = new Date();
     },
 
@@ -284,9 +275,6 @@ export function createKatanaStore() {
           }
           case "amp": {
             this.ampConnected = message.connected;
-            // The values on screen are from before the amp went away, so
-            // they are no longer known to be true.
-            if (!message.connected) this.live = false;
             break;
           }
           case "error":

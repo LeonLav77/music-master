@@ -4,7 +4,7 @@
 
     bank = load("my tones.tsl")
     for patch in bank:
-        print(patch.name, patch.get("gain"))
+        print(patch.name, patch.get(Param.GAIN))
 
     bank[0].apply()         # load the first patch into the amp
 
@@ -18,9 +18,8 @@ import json
 import time
 
 from katana_amp.controls import connect
-from katana_amp.katana import (
-    LIVE_BASE, PARAMETERS, WIDE_PARAMETERS, KatanaError, from_amp,
-)
+from katana_amp.katana import LIVE_BASE, KatanaError, decode_name
+from katana_amp.params import AMP_TYPES, Param
 
 # Which memory offset each named block starts at, relative to the base of a
 # patch. Derived by matching the block contents against the amp's own layout.
@@ -48,7 +47,7 @@ class Patch:
     @property
     def name(self):
         raw = self.blocks.get("UserPatch%PatchName", [])
-        return "".join(chr(b) for b in raw if 0x20 <= b < 0x7F).strip()
+        return decode_name(raw)
 
     def memory(self):
         """Return {offset: byte} for everything this patch defines."""
@@ -58,106 +57,29 @@ class Patch:
                 image[start + index] = byte
         return image
 
-    def get(self, name):
-        """Read a named parameter out of the patch, as the amp would report it."""
-        image = self.memory()
-        if name in WIDE_PARAMETERS:
-            address = WIDE_PARAMETERS[name][0] - LIVE_BASE
-            if address in image and address + 1 in image:
-                return image[address] * 128 + image[address + 1]
-            return None
-        if name not in PARAMETERS:
-            raise KatanaError(f"Unknown parameter {name!r}")
-        value = image.get(PARAMETERS[name][0] - LIVE_BASE)
-        return None if value is None else from_amp(name, value)
+    def get(self, param):
+        """One setting (a Param) as the amp would report it, or None if the
+        patch does not define it."""
+        return self.settings().get(param)
 
     def settings(self):
-        """Return {name: value} for every parameter the patch defines."""
+        """Return {Param: value} for every setting the patch defines."""
         image = self.memory()
         found = {}
-        for name, (address, _, _) in PARAMETERS.items():
-            offset = address - LIVE_BASE
-            if offset in image:
-                found[name] = from_amp(name, image[offset])
-        for name, (address, _, _) in WIDE_PARAMETERS.items():
-            offset = address - LIVE_BASE
-            if offset in image and offset + 1 in image:
-                found[name] = image[offset] * 128 + image[offset + 1]
+        for param in Param:
+            start = param.address() - LIVE_BASE
+            data = [image.get(start + i) for i in range(param.size())]
+            if None not in data:
+                found[param] = param.decode(data)
         return found
-
-    # Blocks that transfer reliably. The two 225-byte effect blocks are
-    # deliberately excluded - see send().
-    SAFE_BLOCKS = (
-        "UserPatch%PatchName",
-        "UserPatch%Patch_0",
-    )
-
-    # Switch addresses for the sections send() does not transfer.
-    EFFECT_SWITCHES = (0x100, 0x300, 0x500, 0x520, 0x540, 0x550)
-
-    def send(self, settle=0.008, include_effects=False):
-        """Raw byte copy of the patch. Prefer apply() - see below.
-
-        This exists because it mirrors how the amp stores a patch, but it
-        can only transfer the amp block faithfully. apply() sets each
-        parameter by name instead and gets everything across.
-
-        By default this sends only the patch name and the amp block -
-        amp model, gain, the tone stack and the graphic EQ. Those verify
-        byte-for-byte, and they are what defines the character of a tone.
-
-        The effect blocks (Fx, Delay, Reverb, pedal) are NOT sent. Their
-        bytes do not map one-to-one onto the amp's addresses: those
-        regions contain two-byte values and reserved holes, and a flat
-        copy puts roughly half the bytes in the wrong place - which
-        switches on effects the patch never asked for. Working that
-        layout out needs a capture of what Boss Tone Studio itself sends.
-        Pass include_effects=True to send them anyway and see for
-        yourself, but expect the effect sections to be wrong.
-
-        Returns (bytes_written, mismatches).
-
-        Does not touch the stored channels - use controls.save_to_patch()
-        afterwards if you want to keep it.
-        """
-        amp = connect()
-
-        blocks = dict(BLOCK_OFFSETS)
-        if not include_effects:
-            blocks = {k: v for k, v in blocks.items() if k in self.SAFE_BLOCKS}
-
-        image = {}
-        for block, start in blocks.items():
-            for index, byte in enumerate(self.blocks.get(block, [])):
-                image[start + index] = byte
-
-        written = 0
-        for offset, byte in sorted(image.items()):
-            amp.write(amp._encode_address(LIVE_BASE + offset), [byte])
-            written += 1
-            if settle:
-                time.sleep(settle)
-
-        if not include_effects:
-            # The effect blocks were not sent, so whatever the amp had
-            # loaded is still running and has nothing to do with this
-            # patch. Switch those sections off rather than leave a sound
-            # the file never asked for.
-            for offset in self.EFFECT_SWITCHES:
-                amp.write(amp._encode_address(LIVE_BASE + offset), [0])
-                time.sleep(settle)
-
-        time.sleep(0.5)
-        return written, self.verify(image)
 
     def apply(self, settle=0.02):
         """Load this patch by setting each named parameter individually.
 
-        Where send() copies raw bytes - which only works for the amp
-        block - this walks the parameters the file defines and writes
-        each one through the normal parameter path. That path is known
-        good for every section, so the effects, delays, reverb and gate
-        come across too.
+        Rather than copying the file's raw bytes - whose effect blocks do
+        not map one-to-one onto the amp's addresses - this walks the
+        parameters the file defines and writes each one through the normal
+        parameter path, which is known good for every section.
 
         Only parameters this project has mapped are set; anything else in
         the file is ignored. Returns (applied, skipped).
@@ -168,53 +90,21 @@ class Patch:
 
         # Effect switches last, so a section is configured before it is
         # switched on and you never hear a half-set effect.
-        switches = {k: v for k, v in values.items() if k.endswith("_switch")}
-        rest = {k: v for k, v in values.items() if not k.endswith("_switch")}
+        switches = {p: v for p, v in values.items() if p.endswith("_switch")}
+        rest = {p: v for p, v in values.items() if not p.endswith("_switch")}
 
         applied = 0
         skipped = []
         for group in (rest, switches):
-            for name, value in sorted(group.items()):
+            for param, value in sorted(group.items()):
                 try:
-                    if name in WIDE_PARAMETERS:
-                        amp.set_wide_parameter(name, value)
-                    else:
-                        amp.set_parameter(name, value)
+                    amp.set_parameter(param, value)
                     applied += 1
                 except KatanaError:
-                    skipped.append(name)
+                    skipped.append(param.value)
                 time.sleep(settle)
 
         return applied, skipped
-
-    def verify(self, image=None, chunk=0x10):
-        """Compare the amp against `image`, reading in blocks for speed."""
-        amp = connect()
-        if image is None:
-            image = self.memory()
-
-        mismatches = []
-        offsets = sorted(image)
-        index = 0
-        while index < len(offsets):
-            start = offsets[index]
-            run = [start]
-            while (
-                index + len(run) < len(offsets)
-                and offsets[index + len(run)] == start + len(run)
-                and len(run) < chunk
-            ):
-                run.append(start + len(run))
-            try:
-                got = amp.read(amp._encode_address(LIVE_BASE + start), len(run))
-            except KatanaError:
-                index += len(run)
-                continue
-            for position, offset in enumerate(run):
-                if position < len(got) and got[position] != image[offset]:
-                    mismatches.append(offset)
-            index += len(run)
-        return mismatches
 
     def __repr__(self):
         return f"<Patch {self.name!r}>"
@@ -242,12 +132,10 @@ def load(path):
 
 def describe(path):
     """Print a summary of every patch in a .tsl file."""
-    from katana_amp.katana import AMP_TYPES
-
     for index, patch in enumerate(load(path), 1):
-        amp_type = patch.get("amp_type")
+        amp_type = patch.get(Param.AMP_TYPE)
         print(
             f"{index}. {patch.name:20s} "
             f"{AMP_TYPES.get(amp_type, f'amp {amp_type}'):16s} "
-            f"gain {patch.get('gain')}  vol {patch.get('volume')}"
+            f"gain {patch.get(Param.GAIN)}  vol {patch.get(Param.VOLUME)}"
         )

@@ -1,29 +1,14 @@
 // Talks to the FastAPI server. Nothing else in the UI knows about HTTP or
 // WebSockets - the store calls these methods and that is the whole seam.
 //
-// Changes go over the WebSocket when it is open: no HTTP round-trip per
-// slider step, and the server does not echo a change back to whoever made
-// it, so a control being dragged is never fought by its own value. HTTP is
-// the fallback for when the socket is down.
+// Live changes (knobs, channels) go over the WebSocket: no HTTP round-trip
+// per slider step, and the server does not echo a change back to whoever
+// made it, so a control being dragged is never fought by its own value.
+// One-off actions (save, resync, wah gestures) are plain HTTP.
 
-/**
- * Where the API lives.
- *
- * The server serves this page and the API on the same origin, so the answer
- * is "wherever the page came from" - no host, no port, nothing to keep in
- * sync. Whatever address you opened, from a phone or the kiosk, the API is
- * on it.
- *
- * Set window.KATANA_API_URL before this script loads to point somewhere
- * else, for a UI served separately from the API it talks to.
- */
-function resolveBase() {
-  const configured = window.KATANA_API_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  return window.location.origin;
-}
-
-export const BASE = resolveBase();
+// The server serves this page and the API together, so the API is wherever
+// the page came from.
+export const BASE = window.location.origin;
 
 /** The amp stores booleans as 0/1. */
 function toWire(value) {
@@ -46,8 +31,6 @@ let socket = null;
 let messageListeners = [];
 let stateListeners = [];
 let reconnectAttempts = 0;
-let reconnectTimer = null;
-let closedByUs = false;
 
 function announce(state) {
   stateListeners.forEach((fn) => fn(state));
@@ -78,31 +61,23 @@ function openSocket() {
   ws.onclose = () => {
     socket = null;
     announce("closed");
-    if (closedByUs) return;
     // Back off, but keep trying - the Pi may still be booting.
     const delay = Math.min(1000 * 2 ** reconnectAttempts, 10000);
     reconnectAttempts += 1;
-    reconnectTimer = setTimeout(openSocket, delay);
+    setTimeout(openSocket, delay);
   };
 
   ws.onerror = () => ws.close();
 }
 
-function socketReady() {
-  return socket !== null && socket.readyState === WebSocket.OPEN;
+/** Send one message over the socket. While it is reconnecting there is
+ *  nowhere to send it, and the change is dropped. */
+function sendMessage(message) {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-/** One parameter write: over the socket when it is open, else HTTP. */
 function write(key, value) {
-  const wire = toWire(value);
-  if (socketReady()) {
-    socket.send(JSON.stringify({ type: "set", name: key, value: wire }));
-    return;
-  }
-  void request(`/api/parameter/${key}`, {
-    method: "PUT",
-    body: JSON.stringify({ value: wire }),
-  }).catch((error) => console.error("[katana]", error));
+  sendMessage({ type: "set", name: key, value: toWire(value) });
 }
 
 // At most one write per parameter every THROTTLE_MS, and the last value
@@ -114,15 +89,7 @@ const timers = new Map();  // key -> the running throttle timer
 
 export const transport = {
   connect() {
-    closedByUs = false;
     openSocket();
-  },
-
-  disconnect() {
-    closedByUs = true;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    socket?.close();
-    socket = null;
   },
 
   /** Fire-and-forget parameter write, throttled per parameter. */
@@ -158,13 +125,7 @@ export const transport = {
 
   /** Switch tone-setting channel. The amp reloads, so a whole new state follows. */
   selectChannel(id) {
-    if (socketReady()) {
-      socket.send(JSON.stringify({ type: "channel", name: id }));
-      return;
-    }
-    void request(`/api/channel/${id}`, { method: "POST" }).catch((error) =>
-      console.error("[katana]", error),
-    );
+    sendMessage({ type: "channel", name: id });
   },
 
   /** Copy the live sound into a stored channel. Overwrites it permanently. */
@@ -195,11 +156,6 @@ export const transport = {
     });
   },
 
-  /** Everything the amp currently reports. */
-  async state() {
-    return request("/api/state");
-  },
-
   /** Full state re-read. The amp never reports physical knob turns. */
   async resync() {
     return request("/api/refresh", { method: "POST" });
@@ -208,15 +164,6 @@ export const transport = {
   /** Channel list and the names of the stored patches. */
   async channels() {
     return request("/api/channels");
-  },
-
-  /** .tsl files on the server and the patches inside them. */
-  async patchFiles() {
-    return request("/api/tsl");
-  },
-
-  async loadPatchFile(file, index) {
-    return request(`/api/tsl/${encodeURIComponent(file)}/${index}`, { method: "POST" });
   },
 
   onMessage(fn) {

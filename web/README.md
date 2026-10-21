@@ -15,14 +15,6 @@ Then open `http://<host>:8000` — from a phone on the same network too. The
 API is on the same origin as the page, so the UI talks to whatever address
 you opened it at, with no configuration and no CORS.
 
-To serve the page from somewhere else (any static file server will do — it
-only needs HTTP, since ES modules do not load from `file://`), point it at
-the API with:
-
-    <script>window.KATANA_API_URL = "http://gitra.local:8000"</script>
-
-placed before `js/app.js` in `index.html`.
-
 ## Layout
 
 | File | What it is |
@@ -42,7 +34,7 @@ placed before `js/app.js` in `index.html`.
 
 `js/schema.js` fetches the parameter tables from the server rather than
 keeping its own copy, so the UI and the amp cannot disagree about ranges or
-enum numbering. Change a parameter in `katana.py`, restart the server, and
+enum numbering. Change a parameter in `params.py`, restart the server, and
 the UI picks it up on the next reload.
 
 ## Notes
