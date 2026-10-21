@@ -31,19 +31,20 @@ placed before `js/app.js` in `index.html`.
 | `app.css` | Design tokens, cabinet materials, layout. Hand-written. |
 | `fonts.css` + `fonts/` | Self-hosted, so the panel renders with no internet. |
 | `vendor/alpine.min.js` | Vendored, for the same reason. |
-| `js/schema.js` | **Generated.** Parameter tables mirrored from Python. |
+| `js/schema.js` | Parameter tables, fetched from `/api/parameters` at startup. |
 | `js/transport.js` | HTTP + WebSocket seam. Nothing else knows about the wire. |
 | `js/store.js` | The Alpine global store: amp state and the operations on it. |
 | `js/controls.js` | Pointer drag, knob geometry, EQ curve maths. |
 | `js/components.js` | `x-data` factories for knob, dial, treadle, EQ, rail. |
 | `js/blocks.js` | Which parameters each editor panel shows. |
-| `js/app.js` | Registers everything on `alpine:init`. |
+| `js/app.js` | Registers everything on `alpine:init`, then loads Alpine. |
 
-## Regenerating the schema
+## The schema
 
-`js/schema.js` mirrors the Python parameter tables so the UI and the amp
-cannot disagree about ranges or enum numbering. It is generated — do not edit
-it by hand. After changing `katana.py`, re-run the generator and re-export.
+`js/schema.js` fetches the parameter tables from the server rather than
+keeping its own copy, so the UI and the amp cannot disagree about ranges or
+enum numbering. Change a parameter in `katana.py`, restart the server, and
+the UI picks it up on the next reload.
 
 ## Notes
 

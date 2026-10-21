@@ -403,7 +403,7 @@ export const delayParams = (p) => [
 /** Merge a display label with the amp's real range/kind. */
 export function resolve(p) {
   const g = PARAM_BY_KEY[p.key];
-  if (!g) throw new Error(`Unknown parameter ${p.key} - regenerate schema.js`);
+  if (!g) throw new Error(`Unknown parameter ${p.key} - not in katana.py's tables`);
   return {
     key: p.key,
     label: p.label,

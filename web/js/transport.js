@@ -23,7 +23,7 @@ function resolveBase() {
   return window.location.origin;
 }
 
-const BASE = resolveBase();
+export const BASE = resolveBase();
 
 /** The amp stores booleans as 0/1. */
 function toWire(value) {

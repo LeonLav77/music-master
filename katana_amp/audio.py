@@ -1,29 +1,3 @@
-"""Playing backing tracks out the analog jack, into the amp's AUX IN.
-
-This module is the audio half of the rig and knows nothing about MIDI. It
-is the Python form of scripts/aux-play.sh, which stays as the hand tool -
-the reasoning about *why* AUX rather than USB lives there and is not
-repeated here.
-
-The one thing worth restating, because everything below depends on it: the
-Katana's USB input lands at the *input* stage, so a track sent there gets
-re-amped and kills the guitar jack. AUX IN mixes in after the modelling.
-`pick_sink` therefore refuses to guess the USB device even when it is the
-only one present.
-
-Three things happen here:
-
-  * finding a track on disk and reading its duration
-  * generating a count-in click and gluing it to the front of a track
-  * running pw-play as a child process, with pause and seek on top
-
-pw-play has neither pause nor seek - it plays a file from its start to its
-end and exits. Both are built here rather than by switching to a library
-with a real audio API: the tradeoffs are noted at `Player.pause` and
-`Player.seek`, and both are cheap enough at this scale to be worth the
-absence of a dependency.
-"""
-
 import json
 import math
 import re

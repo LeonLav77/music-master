@@ -464,11 +464,8 @@ amp and knows nothing about a UI, `server/ui.py` is the static mount, and
 It talks to the server through `web/js/transport.js` and nothing else —
 changes go over the WebSocket, with HTTP as the fallback.
 
-Regenerate the parameter schema after changing `katana.py`:
-
-```bash
-./venv/bin/python scripts/generate_schema.py    # writes web/js/schema.js
-```
+The UI fetches the parameter schema from `/api/parameters` when it loads,
+so a change to `katana.py` reaches it after a server restart.
 
 See `web/README.md` for the file-by-file layout.
 
@@ -480,9 +477,9 @@ seconds of MIDI, during which nothing changes and then everything changes
 at once. The store exposes `busy` for those: a progress bar runs and the
 controls that would queue another one are disabled.
 
-`src/lib/katana/generated.ts` is written by `scripts/generate_schema.py`.
-Do not edit it: the amp's enum numbering is sparse, and hand-maintaining
-it in two languages is how "Phaser" ends up loading Octave.
+The parameter tables live only in Python. The amp's enum numbering is
+sparse, and hand-maintaining it in two languages is how "Phaser" ends up
+loading Octave.
 
 ## Sources
 

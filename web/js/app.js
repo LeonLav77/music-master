@@ -7,11 +7,7 @@ import { createKatanaStore } from "./store.js";
 import { knob, ampDial, treadle, eqPad, channelRail, wahRock, scrubber, tapTempo } from "./components.js";
 import { createDeckStore } from "./deck.js";
 import { transport } from "./transport.js";
-import {
-  CHANNELS, FOOTSWITCHES, EQ_BANDS, labelFor,
-  BOOST_TYPE_OPTIONS, DELAY_TYPE_OPTIONS, REVERB_TYPE_OPTIONS,
-  WAH_TYPE_OPTIONS, PEDAL_TYPE_OPTIONS, FX_TYPE_OPTIONS,
-} from "./schema.js";
+import { CHANNELS, FOOTSWITCHES, EQ_BANDS, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
 import {
   BLOCK_TITLES, FX_PARAM_MAP, BOOST_PARAMS, REVERB_PARAMS, WAH_PARAMS,
   GATE_PARAMS, delayParams, knobParams, enumParams, toggleParams,
@@ -134,3 +130,11 @@ document.addEventListener("alpine:init", () => {
     },
   }));
 });
+
+// Alpine is loaded here, not from index.html. This module only runs once
+// schema.js has fetched the parameters, and Alpine fires alpine:init the
+// moment it loads - loaded any earlier, it would start before the listener
+// above existed and the page would come up empty.
+const alpine = document.createElement("script");
+alpine.src = "vendor/alpine.min.js";
+document.head.append(alpine);
