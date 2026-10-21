@@ -91,6 +91,12 @@ CHANNELS = {
     "b1": 6, "b2": 7, "b3": 8, "b4": 9,
 }
 
+# The channel the amp is on, as a two-byte program number counted from 0:
+# B2 (program 7) reads [0, 6]. Verified on a MkII by switching channels on
+# the panel and reading it back. The amp sends nothing when its CH buttons
+# are pressed, so reading this is the only way to know.
+CURRENT_CHANNEL = 0x00010000
+
 def decode_name(raw):
     """A patch name from its bytes: printable ASCII, padding stripped."""
     return "".join(chr(b) for b in raw if 0x20 <= b < 0x7F).strip()
@@ -254,6 +260,15 @@ class Katana:
             mido.Message("program_change", channel=self.midi_channel, program=program - 1)
         )
         return program
+
+    def read_channel(self):
+        """The channel the amp is on: "a1".."a4", "panel" or "b1".."b4".
+
+        None if the amp reports a program that is not one of CHANNELS.
+        """
+        high, low = self.read(self._encode_address(CURRENT_CHANNEL), 2, attempts=1)
+        program = high * 128 + low + 1
+        return next((name for name, pc in CHANNELS.items() if pc == program), None)
 
     def send_control_change(self, control, value):
         """Send a raw Control Change on the amp's receive channel."""

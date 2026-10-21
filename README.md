@@ -13,6 +13,10 @@ katana_amp/        the library - no printing, no prompts, reusable
   controls.py      the shared connection, get/set_parameter, wah, channels
   tsl.py           read and load BOSS Tone Studio .tsl files
 server/            FastAPI app: amp API and the UI on one port
+  app.py           creates the app and plugs the parts in
+  amp.py           the link to the amp: lock, cache, reconnect loop, broadcast
+  routes.py        the HTTP endpoints
+  live.py          the WebSocket: knob changes and channel switches
 web/               the control surface - plain HTML, CSS and JS, no build step
 docs/
   CONTROLS.md      every parameter the amp exposes, with ranges
@@ -119,6 +123,11 @@ save_to_patch(3)            # copy the whole live sound into patch 3
 ```
 
 Programs: `a1`–`a4` = PC 1–4, `panel` = PC 5, `b1`–`b4` = PC 6–9.
+
+The amp keeps the channel it is on at `00 01 00 00`, as a two-byte program
+number counted from 0 (B2 reads `[0, 6]`). The server reads it with every
+refresh, so the UI shows the real channel. The amp does **not** announce
+channel changes made with its own CH buttons; press Resync to pick those up.
 
 `save_to_patch()` copies **everything** — amp, EQ, all effect blocks, both
 delays, reverb, wah — about 2.2 KB, the entire patch. It overwrites the
@@ -372,8 +381,9 @@ second work.
 The page is same-origin with the API, so it needs no configuration
 wherever you open it from.
 
-`server/api.py` is the amp and knows nothing about a UI; `server/app.py`
-plugs it in and serves `web/` alongside it.
+`server/amp.py` is the link to the amp and knows nothing about a UI;
+`server/routes.py` (HTTP) and `server/live.py` (WebSocket) are built on it,
+and `server/app.py` plugs them in and serves `web/` alongside them.
 
 It talks to the server through `web/js/transport.js` and nothing else —
 changes go over the WebSocket, with HTTP as the fallback.

@@ -258,10 +258,10 @@ export function createKatanaStore() {
           case "channel":
           case "patch": {
             this._applyValues(message.values);
-            if (message.type === "channel") {
-              this.channel = message.channel;
-              this.dirty = false;
-            }
+            // A state frame carries the channel the amp reports; a channel
+            // frame is a switch that just finished, so nothing is edited yet.
+            if (message.channel) this.channel = message.channel;
+            if (message.type === "channel") this.dirty = false;
             break;
           }
           case "parameter": {
