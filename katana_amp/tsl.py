@@ -18,7 +18,9 @@ import json
 import time
 
 from katana_amp.controls import connect
-from katana_amp.katana import LIVE_BASE, PARAMETERS, WIDE_PARAMETERS, KatanaError
+from katana_amp.katana import (
+    LIVE_BASE, PARAMETERS, WIDE_PARAMETERS, KatanaError, from_amp,
+)
 
 # Which memory offset each named block starts at, relative to the base of a
 # patch. Derived by matching the block contents against the amp's own layout.
@@ -66,7 +68,8 @@ class Patch:
             return None
         if name not in PARAMETERS:
             raise KatanaError(f"Unknown parameter {name!r}")
-        return image.get(PARAMETERS[name][0] - LIVE_BASE)
+        value = image.get(PARAMETERS[name][0] - LIVE_BASE)
+        return None if value is None else from_amp(name, value)
 
     def settings(self):
         """Return {name: value} for every parameter the patch defines."""
@@ -75,7 +78,7 @@ class Patch:
         for name, (address, _, _) in PARAMETERS.items():
             offset = address - LIVE_BASE
             if offset in image:
-                found[name] = image[offset]
+                found[name] = from_amp(name, image[offset])
         for name, (address, _, _) in WIDE_PARAMETERS.items():
             offset = address - LIVE_BASE
             if offset in image and offset + 1 in image:

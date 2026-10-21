@@ -1,20 +1,3 @@
-"""HTTP + WebSocket API for the Katana.
-
-This module is the amp and nothing else: it owns the MIDI port, the cache
-and the reconnect loop, and exposes them as a router. It does not know
-whether a UI is being served alongside it, which is what keeps it usable on
-its own - a footswitch script, curl, or a headless Pi.
-
-Mount it with `server.app`, or on your own FastAPI:
-
-    app.include_router(api.router)
-    app.router.lifespan_context = api.lifespan
-
-The amp is a single serial device, so every access goes through one lock
-and reads are served from a cache. State changes are pushed to WebSocket
-clients so a UI can follow the amp instead of polling it.
-"""
-
 import asyncio
 import contextlib
 import json
@@ -32,6 +15,7 @@ from katana_amp.katana import (
     WIDE_PARAMETERS,
     KatanaError,
     describe_parameters,
+    from_amp,
 )
 
 # Tone Studio patch files live here, next to the project root.
@@ -43,27 +27,11 @@ router = APIRouter()
 SCHEMA = describe_parameters()
 SCHEMA_BY_NAME = {entry["name"]: entry for entry in SCHEMA}
 
-# One MIDI port, one lock. Everything that touches the amp holds it.
 _lock = asyncio.Lock()
-
-# Last known value of every parameter, so reads do not hit the amp.
 _cache = {}
-
-# Connected WebSocket clients.
 _clients = set()
-
-# Whether the amp answered the last time we tried to talk to it. This is not
-# the same as "a MIDI port is open": the port survives the amp being switched
-# off, and writes to it succeed silently. Only a read proves the amp is there.
 _amp_online = False
-
-# Set while the reconnect loop should be probing. Cleared once the amp
-# answers, set again the moment anything sees it fail.
 _reconnect = asyncio.Event()
-
-# How long between probes while the amp is missing. Fast enough that
-# switching the amp back on feels immediate, slow enough that a Pi with no
-# amp attached is not spinning on failed port opens.
 RECONNECT_INTERVAL = 2.0
 
 
@@ -72,11 +40,6 @@ class Value(BaseModel):
 
 
 async def _broadcast(message, skip=None):
-    """Send to every connected client, dropping any that have gone.
-
-    `skip` is the client that caused the change - it already moved its own
-    control, and echoing back would fight the user mid-drag.
-    """
     if not _clients:
         return
     payload = json.dumps(message)
@@ -87,21 +50,6 @@ async def _broadcast(message, skip=None):
             await client.send_text(payload)
         except Exception:
             _clients.discard(client)
-
-
-def _to_display(name, value):
-    """Convert a stored value to the units the API exposes."""
-    entry = SCHEMA_BY_NAME.get(name)
-    if entry and entry.get("unit") == "dB":
-        return value - 24
-    return value
-
-
-def _to_stored(name, value):
-    entry = SCHEMA_BY_NAME.get(name)
-    if entry and entry.get("unit") == "dB":
-        return value + 24
-    return value
 
 
 async def _amp_call(fn, *args):
@@ -194,7 +142,7 @@ def _refresh():
             continue
         for offset, name in enumerate(names):
             if offset < len(data):
-                found[name] = _to_display(name, data[offset])
+                found[name] = from_amp(name, data[offset])
 
     for name, (address, _, _) in WIDE_PARAMETERS.items():
         try:
@@ -278,7 +226,7 @@ async def _apply_parameter(name, value, origin=None):
         )
 
     async with _lock:
-        await _amp_call(_write, name, _to_stored(name, value))
+        await _amp_call(_write, name, value)
 
     _cache[name] = value
     await _broadcast(
@@ -293,7 +241,7 @@ async def get_parameter(name: str):
         raise HTTPException(404, f"Unknown parameter {name!r}")
     async with _lock:
         try:
-            value = _to_display(name, await _amp_call(_read, name))
+            value = await _amp_call(_read, name)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     _cache[name] = value
@@ -506,7 +454,7 @@ async def list_tsl():
                 },
             }
             eq = [
-                settings[key] - 24
+                settings[key]
                 for key in EQ_BANDS_ORDER
                 if key in settings
             ]

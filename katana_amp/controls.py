@@ -133,6 +133,7 @@ from katana_amp.katana import (
     WAH_TYPES,
     Katana,
     KatanaError,
+    from_amp,
 )
 
 # There is only ever one amp, so the helpers share a single connection that
@@ -556,27 +557,20 @@ def rock_wah(intervals=4, low=0, high=50, seconds=2.3, bounce=True):
 
 # --- Graphic EQ ------------------------------------------------------------
 #
-# Ten bands, each -24 to +24 dB. The amp stores 0-48 with 24 as flat; these
-# helpers take dB so you do not have to think about the offset.
+# Ten bands, each -24 to +24 dB. The amp stores them offset, but Katana
+# converts, so everything here is plain dB.
 
 EQ_BANDS = ("31hz", "62hz", "125hz", "250hz", "500hz",
             "1khz", "2khz", "4khz", "8khz", "16khz")
 
-_EQ_CENTRE = 24
-
-
 def get_eq_band(band):
     """Return one graphic EQ band in dB (-24 to +24). Band e.g. "1khz"."""
-    return get_parameter(_eq_name(band)) - _EQ_CENTRE
+    return get_parameter(_eq_name(band))
 
 
 def set_eq_band(band, decibels):
     """Set one graphic EQ band in dB, -24 to +24. Band e.g. "1khz"."""
-    if not -_EQ_CENTRE <= decibels <= _EQ_CENTRE:
-        raise KatanaError(
-            f"EQ gain must be -{_EQ_CENTRE} to +{_EQ_CENTRE} dB, got {decibels}"
-        )
-    set_parameter(_eq_name(band), decibels + _EQ_CENTRE)
+    set_parameter(_eq_name(band), decibels)
     return decibels
 
 
@@ -692,7 +686,7 @@ def read_patch_parameter(patch, name):
     if address is None:
         raise KatanaError(f"Unknown parameter {name!r}")
     amp = connect()
-    return amp.read_patch(patch, address - 0x60000000, 1)[0]
+    return from_amp(name, amp.read_patch(patch, address - 0x60000000, 1)[0])
 
 
 def get_patch_names():

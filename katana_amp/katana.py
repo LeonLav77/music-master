@@ -171,7 +171,8 @@ PARAMETERS = {
     "delay2_direct_mix": (0x60000527, 0x00, 0x64),
 
     # --- Graphic EQ (10 bands) --------------------------------------------
-    # 0-48, where 24 is flat. The helpers in controls.py take dB (-12..+12).
+    # Stored 0-48, where 24 is flat. Katana.get/set_parameter speak dB
+    # (-24..+24) - see OFFSETS and from_amp/to_amp below.
     "eq_band_31hz": (0x6000004D, 0x00, 0x30),
     "eq_band_62hz": (0x6000004E, 0x00, 0x30),
     "eq_band_125hz": (0x6000004F, 0x00, 0x30),
@@ -446,6 +447,16 @@ READ_ONLY = frozenset(
 # name -> (offset, unit); value_shown = value_stored - offset
 OFFSETS = {name: (24, "dB") for name in PARAMETERS if name.startswith("eq_band_")}
 
+
+def from_amp(name, value):
+    """A value as the amp stores it, in the units people use (EQ in dB)."""
+    return value - OFFSETS.get(name, (0, None))[0]
+
+
+def to_amp(name, value):
+    """The reverse of from_amp: what the amp stores for a value in real units."""
+    return value + OFFSETS.get(name, (0, None))[0]
+
 UNITS = {"delay_time": "ms", "delay2_time": "ms"}
 
 # Graphic EQ bands low to high - the order a fader row should show them in,
@@ -491,12 +502,12 @@ def describe_parameters():
     everything.update(WIDE_PARAMETERS)
 
     for name, (_, low, high) in sorted(everything.items()):
-        offset, unit = OFFSETS.get(name, (0, None))
+        _, unit = OFFSETS.get(name, (0, None))
         entry = {
             "name": name,
             "group": parameter_group(name),
-            "min": low - offset,
-            "max": high - offset,
+            "min": from_amp(name, low),
+            "max": from_amp(name, high),
             "writable": name not in READ_ONLY,
         }
         if unit or name in UNITS:
@@ -665,18 +676,23 @@ class Katana:
         )
 
     def get_parameter(self, name):
-        """Read one named parameter (see PARAMETERS)."""
+        """Read one named parameter (see PARAMETERS), in real units."""
         address, _, _ = self._lookup(name)
-        return self.read(self._encode_address(address), 1)[0]
+        return from_amp(name, self.read(self._encode_address(address), 1)[0])
 
     def set_parameter(self, name, value):
-        """Write one named parameter, refusing values the amp would clamp."""
+        """Write one named parameter in real units, refusing values the amp
+        would clamp."""
         address, low, high = self._lookup(name)
         if not isinstance(value, int):
             raise KatanaError(f"{name} must be an integer, got {value!r}")
-        if not low <= value <= high:
-            raise KatanaError(f"{name} must be between {low} and {high}, got {value}")
-        self.write(self._encode_address(address), [value])
+        stored = to_amp(name, value)
+        if not low <= stored <= high:
+            raise KatanaError(
+                f"{name} must be between {from_amp(name, low)} and "
+                f"{from_amp(name, high)}, got {value}"
+            )
+        self.write(self._encode_address(address), [stored])
 
     @staticmethod
     def _lookup(name):

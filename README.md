@@ -129,7 +129,7 @@ get_parameter("wah_pedal_min")
 ### Graphic EQ
 
 Ten bands, set in dB (-24 to +24, 0 is flat). The amp stores 0–48 with 24
-as centre; the helpers do that conversion for you:
+as centre; `Katana` converts, so everything above it works in dB:
 
 ```python
 set_eq(**{"125hz": 6, "1khz": -4})
