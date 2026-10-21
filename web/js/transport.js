@@ -92,6 +92,26 @@ function socketReady() {
   return socket !== null && socket.readyState === WebSocket.OPEN;
 }
 
+/** One parameter write: over the socket when it is open, else HTTP. */
+function write(key, value) {
+  const wire = toWire(value);
+  if (socketReady()) {
+    socket.send(JSON.stringify({ type: "set", name: key, value: wire }));
+    return;
+  }
+  void request(`/api/parameter/${key}`, {
+    method: "PUT",
+    body: JSON.stringify({ value: wire }),
+  }).catch((error) => console.error("[katana]", error));
+}
+
+// At most one write per parameter every THROTTLE_MS, and the last value
+// always goes out. The amp takes ~40 writes/s; faster than that, writes
+// queue on the server and the sound lags behind the finger.
+const THROTTLE_MS = 40;
+const waiting = new Map(); // key -> newest value not sent yet
+const timers = new Map();  // key -> the running throttle timer
+
 export const transport = {
   connect() {
     closedByUs = false;
@@ -105,17 +125,27 @@ export const transport = {
     socket = null;
   },
 
-  /** Fire-and-forget parameter write. */
+  /** Fire-and-forget parameter write, throttled per parameter. */
   send(key, value) {
-    const wire = toWire(value);
-    if (socketReady()) {
-      socket.send(JSON.stringify({ type: "set", name: key, value: wire }));
+    if (timers.has(key)) {
+      // Sent one recently - just remember the newest.
+      waiting.set(key, value);
       return;
     }
-    void request(`/api/parameter/${key}`, {
-      method: "PUT",
-      body: JSON.stringify({ value: wire }),
-    }).catch((error) => console.error("[katana]", error));
+    // First change: send right away, no delay.
+    write(key, value);
+    const tick = () => {
+      if (waiting.has(key)) {
+        // Something changed meanwhile: send the latest.
+        write(key, waiting.get(key));
+        waiting.delete(key);
+        timers.set(key, setTimeout(tick, THROTTLE_MS));
+      } else {
+        // Quiet - the next change goes out instantly again.
+        timers.delete(key);
+      }
+    };
+    timers.set(key, setTimeout(tick, THROTTLE_MS));
   },
 
   /** Footswitch-style CC message. */
