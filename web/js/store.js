@@ -43,18 +43,6 @@ EQ_BANDS.forEach((band, index) => {
   offlineDefaults[band.key] = eqSeed[index] ?? 0;
 });
 
-// The input meter shows -60 dB (silence) to 0 dB (the loudest the amp
-// sends). Decibels, not the raw 0..1 level: hearing is logarithmic, so on a
-// straight scale quiet playing would barely move the bar.
-const METER_FLOOR_DB = -60;
-
-/** A 0..1 level as a 0..100 position on the meter. */
-function meterPercent(level) {
-  if (level <= 0) return 0;
-  const decibels = 20 * Math.log10(level);
-  return Math.max(0, Math.min(100, (1 - decibels / METER_FLOOR_DB) * 100));
-}
-
 /** The amp reports 0/1 for switches; the UI wants real booleans. */
 function fromWire(key, value) {
   return PARAM_BY_KEY[key]?.kind === "toggle" ? value !== 0 : value;
@@ -94,8 +82,6 @@ export function createKatanaStore() {
     // reachable with the amp switched off, and that has to look different
     // from a server that is not there at all.
     ampConnected: false,
-    // The guitar's loudness, from the amp's USB audio: 0..1, updated 20x a second.
-    level: { peak: 0, rms: 0 },
     busy: null,
     channel: "a1",
     channelNames: Object.fromEntries(CHANNELS.map((channel) => [channel.id, channel.name])),
@@ -133,11 +119,6 @@ export function createKatanaStore() {
       }
       return this.ampConnected ? "live" : "no amp";
     },
-
-    /** Where the meter bar ends (average loudness) and its peak mark sits. */
-    get levelPercent() { return meterPercent(this.level.rms); },
-    get peakPercent() { return meterPercent(this.level.peak); },
-    get clipping() { return this.level.peak >= 0.98; },
 
     /** Modifier for the indicator dot, matching statusLabel. */
     get statusKind() {
@@ -294,10 +275,6 @@ export function createKatanaStore() {
           }
           case "amp": {
             this.ampConnected = message.connected;
-            break;
-          }
-          case "level": {
-            this.level = { peak: message.peak, rms: message.rms };
             break;
           }
           case "error":

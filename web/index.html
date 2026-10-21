@@ -55,16 +55,6 @@
         </span>
 
         <div class="status-actions">
-          <!-- Input meter: how loud the guitar is, from the amp's USB audio.
-               The bar is the average loudness, the thin mark the peak. -->
-          <span class="meter" :title="amp.clipping ? 'Input is clipping' : 'Guitar input level'">
-            <span class="meter-label engrave">in</span>
-            <span class="meter-track">
-              <span class="meter-fill" :style="`width:${amp.levelPercent}%`"></span>
-              <span class="meter-peak" :class="amp.clipping && 'clip'" :style="`left:${amp.peakPercent}%`"></span>
-            </span>
-          </span>
-
           <!-- Whether the amp is actually reachable. Without this a
                disconnected surface looks identical to a working one. -->
           <span class="conn" :title="amp.connection === 'open' ? (amp.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
