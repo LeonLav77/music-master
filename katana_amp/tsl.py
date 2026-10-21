@@ -17,6 +17,7 @@ straight to the amp.
 import json
 import time
 
+from katana_amp.controls import connect
 from katana_amp.katana import LIVE_BASE, PARAMETERS, WIDE_PARAMETERS, KatanaError
 
 # Which memory offset each named block starts at, relative to the base of a
@@ -91,7 +92,7 @@ class Patch:
     # Switch addresses for the sections send() does not transfer.
     EFFECT_SWITCHES = (0x100, 0x300, 0x500, 0x520, 0x540, 0x550)
 
-    def send(self, amp=None, settle=0.008, include_effects=False):
+    def send(self, settle=0.008, include_effects=False):
         """Raw byte copy of the patch. Prefer apply() - see below.
 
         This exists because it mirrors how the amp stores a patch, but it
@@ -116,10 +117,7 @@ class Patch:
         Does not touch the stored channels - use controls.save_to_patch()
         afterwards if you want to keep it.
         """
-        if amp is None:
-            from katana_amp.controls import connect
-
-            amp = connect()
+        amp = connect()
 
         blocks = dict(BLOCK_OFFSETS)
         if not include_effects:
@@ -147,9 +145,9 @@ class Patch:
                 time.sleep(settle)
 
         time.sleep(0.5)
-        return written, self.verify(amp, image)
+        return written, self.verify(image)
 
-    def apply(self, amp=None, settle=0.02):
+    def apply(self, settle=0.02):
         """Load this patch by setting each named parameter individually.
 
         Where send() copies raw bytes - which only works for the amp
@@ -161,10 +159,7 @@ class Patch:
         Only parameters this project has mapped are set; anything else in
         the file is ignored. Returns (applied, skipped).
         """
-        if amp is None:
-            from katana_amp.controls import connect
-
-            amp = connect()
+        amp = connect()
 
         values = self.settings()
 
@@ -189,8 +184,9 @@ class Patch:
 
         return applied, skipped
 
-    def verify(self, amp, image=None, chunk=0x10):
+    def verify(self, image=None, chunk=0x10):
         """Compare the amp against `image`, reading in blocks for speed."""
+        amp = connect()
         if image is None:
             image = self.memory()
 

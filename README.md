@@ -124,8 +124,7 @@ set_parameter("boost_bottom", 60)
 get_parameter("wah_pedal_min")
 ```
 
-`disconnect()` releases the MIDI port; the next call reopens it. Every
-helper still accepts `amp=` if you want to be explicit.
+`disconnect()` releases the MIDI port; the next call reopens it.
 
 ### Graphic EQ
 

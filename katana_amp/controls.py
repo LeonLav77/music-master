@@ -23,7 +23,7 @@ Anything without a dedicated helper is reachable by name:
 """
 
 __all__ = [
-    "connect", "disconnect", "is_connected", "amp_session",
+    "connect", "disconnect", "is_connected",
     "get_parameter", "set_parameter", "list_parameters",
     "get_wide_parameter", "set_wide_parameter",
     # amp
@@ -117,7 +117,6 @@ __all__ = [
 ]
 
 import contextlib
-from contextlib import contextmanager
 
 from katana_amp.katana import (
     AMP_TYPES,
@@ -137,8 +136,7 @@ from katana_amp.katana import (
 )
 
 # There is only ever one amp, so the helpers share a single connection that
-# is opened on first use and reused from then on. You never have to pass it
-# around, but every helper still takes amp= if you want to be explicit.
+# is opened on first use and reused from then on.
 _amp = None
 
 
@@ -170,53 +168,42 @@ def is_connected():
     return _amp is not None
 
 
-@contextmanager
-def _connection(amp):
-    """Use the caller's amp if given, otherwise the shared one."""
-    yield amp if amp is not None else connect()
-
-
-def amp_session():
-    """An explicit `with` block, for when you want your own connection."""
-    return Katana()
-
-
 # --- Anything by name ------------------------------------------------------
 
-def get_parameter(name, amp=None):
+def get_parameter(name):
     """Read any parameter by name. See list_parameters()."""
-    with _connection(amp) as a:
-        return a.get_parameter(name)
+    amp = connect()
+    return amp.get_parameter(name)
 
 
-def set_parameter(name, value, amp=None):
+def set_parameter(name, value):
     """Set any parameter by name, for controls with no dedicated helper."""
-    with _connection(amp) as a:
-        a.set_parameter(name, value)
-        return value
+    amp = connect()
+    amp.set_parameter(name, value)
+    return value
 
 
-def get_wide_parameter(name, amp=None):
+def get_wide_parameter(name):
     """Read a two-byte parameter, e.g. delay time in ms."""
-    with _connection(amp) as a:
-        return a.get_wide_parameter(name)
+    amp = connect()
+    return amp.get_wide_parameter(name)
 
 
-def set_wide_parameter(name, value, amp=None):
+def set_wide_parameter(name, value):
     """Set a two-byte parameter, e.g. delay time in ms."""
-    with _connection(amp) as a:
-        a.set_wide_parameter(name, value)
-        return value
+    amp = connect()
+    amp.set_wide_parameter(name, value)
+    return value
 
 
 def _make_wide(name):
     """Build a get/set pair for a two-byte parameter."""
 
-    def getter(amp=None):
-        return get_wide_parameter(name, amp=amp)
+    def getter():
+        return get_wide_parameter(name)
 
-    def setter(value, amp=None):
-        return set_wide_parameter(name, value, amp=amp)
+    def setter(value):
+        return set_wide_parameter(name, value)
 
     low, high = WIDE_PARAMETERS[name][1], WIDE_PARAMETERS[name][2]
     getter.__doc__ = f"Return {name} ({low}-{high})."
@@ -236,11 +223,11 @@ def list_parameters():
 def _make(name):
     """Build a get/set pair for a plain numeric parameter."""
 
-    def getter(amp=None):
-        return get_parameter(name, amp=amp)
+    def getter():
+        return get_parameter(name)
 
-    def setter(value, amp=None):
-        return set_parameter(name, value, amp=amp)
+    def setter(value):
+        return set_parameter(name, value)
 
     low, high = PARAMETERS[name][1], PARAMETERS[name][2]
     getter.__name__, setter.__name__ = f"get_{name}", f"set_{name}"
@@ -252,14 +239,14 @@ def _make(name):
 def _switch(name, label):
     """Build on()/off()/is_on() for a 0/1 switch."""
 
-    def on(amp=None):
-        return set_parameter(name, 1, amp=amp)
+    def on():
+        return set_parameter(name, 1)
 
-    def off(amp=None):
-        return set_parameter(name, 0, amp=amp)
+    def off():
+        return set_parameter(name, 0)
 
-    def state(amp=None):
-        return bool(get_parameter(name, amp=amp))
+    def state():
+        return bool(get_parameter(name))
 
     on.__doc__ = f"Switch {label} on."
     off.__doc__ = f"Switch {label} off."
@@ -293,14 +280,14 @@ def _match(name, table, what):
 def _typed(name, table, what):
     """Build a get/set pair for a parameter whose values have names."""
 
-    def getter(amp=None):
-        value = get_parameter(name, amp=amp)
+    def getter():
+        value = get_parameter(name)
         return value, table.get(value, f"Unknown ({value})")
 
-    def setter(choice, amp=None):
+    def setter(choice):
         if isinstance(choice, str):
             choice = _match(choice, table, what)
-        set_parameter(name, choice, amp=amp)
+        set_parameter(name, choice)
         return choice, table.get(choice, str(choice))
 
     getter.__doc__ = f"Return the current {what} as (number, name)."
@@ -320,20 +307,20 @@ get_amp_type, set_amp_type = _typed("amp_type", AMP_TYPES, "amp")
 bright_on, bright_off, bright_is_on = _switch("bright", "the bright switch")
 
 
-def get_knob_volume(amp=None):
+def get_knob_volume():
     """Return the physical volume knob position. Read-only over MIDI."""
-    return get_parameter("knob_volume", amp=amp)
+    return get_parameter("knob_volume")
 
 
-def set_tone(bass=None, middle=None, treble=None, presence=None, amp=None):
+def set_tone(bass=None, middle=None, treble=None, presence=None):
     """Set any combination of tone controls in one go."""
-    with _connection(amp) as a:
-        for name, value in (
-            ("bass", bass), ("middle", middle),
-            ("treble", treble), ("presence", presence),
-        ):
-            if value is not None:
-                a.set_parameter(name, value)
+    amp = connect()
+    for name, value in (
+        ("bass", bass), ("middle", middle),
+        ("treble", treble), ("presence", presence),
+    ):
+        if value is not None:
+            amp.set_parameter(name, value)
 
 
 # --- Boost / overdrive -----------------------------------------------------
@@ -457,45 +444,45 @@ def list_wah_types():
     return dict(WAH_TYPES)
 
 
-def get_wah(amp=None):
+def get_wah():
     """Return (is_on, voicing_name, pedal_position)."""
-    with _connection(amp) as a:
-        on = bool(a.get_parameter("pedal_switch"))
-        voicing = a.get_parameter("wah_type")
-        return on, WAH_TYPES.get(voicing, str(voicing)), a.get_parameter("wah_position")
+    amp = connect()
+    on = bool(amp.get_parameter("pedal_switch"))
+    voicing = amp.get_parameter("wah_type")
+    return on, WAH_TYPES.get(voicing, str(voicing)), amp.get_parameter("wah_position")
 
 
-def set_wah(position, amp=None):
+def set_wah(position):
     """Move the wah treadle, 0 (heel) to 100 (toe).
 
     Parking it at one position just sets the filter. Sweeping is what makes
     the wah sound - see sweep_wah().
     """
-    return set_parameter("wah_position", position, amp=amp)
+    return set_parameter("wah_position", position)
 
 
-def cry_wah(amp=None):
+def cry_wah():
     """Load the Cry Wah voicing and switch the pedal on."""
-    return use_wah("Cry Wah", amp=amp)
+    return use_wah("Cry Wah")
 
 
-def use_wah(voicing="Cry Wah", amp=None):
+def use_wah(voicing="Cry Wah"):
     """Switch the pedal section to wah, load `voicing`, and turn it on.
 
     This is the one-call way to actually get a wah, because the pedal
     section also does pedal-bend and has to be pointed at wah first.
     """
-    with _connection(amp) as a:
-        a.set_parameter("pedal_type", 0)
-        number = voicing
-        if isinstance(number, str):
-            number = _match(number, WAH_TYPES, "wah")
-        a.set_parameter("wah_type", number)
-        a.set_parameter("pedal_switch", 1)
-        return number, WAH_TYPES.get(number, str(number))
+    amp = connect()
+    amp.set_parameter("pedal_type", 0)
+    number = voicing
+    if isinstance(number, str):
+        number = _match(number, WAH_TYPES, "wah")
+    amp.set_parameter("wah_type", number)
+    amp.set_parameter("pedal_switch", 1)
+    return number, WAH_TYPES.get(number, str(number))
 
 
-def sweep_wah(start=0, end=100, steps=50, delay=0.1, amp=None):
+def sweep_wah(start=0, end=100, steps=50, delay=0.1):
     """Sweep the treadle from `start` to `end` so you can hear it move.
 
     Switches the pedal section on first. Reuses one connection so the
@@ -503,25 +490,25 @@ def sweep_wah(start=0, end=100, steps=50, delay=0.1, amp=None):
     """
     import time
 
-    with _connection(amp) as a:
-        a.set_parameter("pedal_switch", 1)
-        steps = max(steps, 2)
-        for i in range(steps):
-            position = round(start + (end - start) * i / (steps - 1))
-            a.set_parameter("wah_position", position)
-            time.sleep(delay)
-        return end
+    amp = connect()
+    amp.set_parameter("pedal_switch", 1)
+    steps = max(steps, 2)
+    for i in range(steps):
+        position = round(start + (end - start) * i / (steps - 1))
+        amp.set_parameter("wah_position", position)
+        time.sleep(delay)
+    return end
 
 
-def wah_wah(cycles=3, amp=None):
+def wah_wah(cycles=3):
     """Rock the treadle up and down `cycles` times. The classic sound."""
-    with _connection(amp) as a:
-        for _ in range(cycles):
-            sweep_wah(0, 100, steps=25, delay=0.04, amp=a)
-            sweep_wah(100, 0, steps=25, delay=0.04, amp=a)
+    amp = connect()
+    for _ in range(cycles):
+        sweep_wah(0, 100, steps=25, delay=0.04)
+        sweep_wah(100, 0, steps=25, delay=0.04)
 
 
-def rock_wah(intervals=4, low=0, high=50, seconds=2.3, bounce=True, amp=None):
+def rock_wah(intervals=4, low=0, high=50, seconds=2.3, bounce=True):
     """Rock the treadle `intervals` times, each one taking `seconds`.
 
     "4 intervals of 0 to 50 in 2.3 seconds" is rock_wah(4, 0, 50, 2.3):
@@ -550,21 +537,21 @@ def rock_wah(intervals=4, low=0, high=50, seconds=2.3, bounce=True, amp=None):
     steps = max(2, min(int(leg_seconds * 40), 200))
     delay = leg_seconds / steps
 
-    with _connection(amp) as a:
-        a.set_parameter("pedal_switch", 1)
-        for _ in range(intervals):
+    amp = connect()
+    amp.set_parameter("pedal_switch", 1)
+    for _ in range(intervals):
+        for i in range(steps):
+            position = round(low + (high - low) * i / (steps - 1))
+            amp.set_parameter("wah_position", position)
+            time.sleep(delay)
+        if bounce:
             for i in range(steps):
-                position = round(low + (high - low) * i / (steps - 1))
-                a.set_parameter("wah_position", position)
+                position = round(high + (low - high) * i / (steps - 1))
+                amp.set_parameter("wah_position", position)
                 time.sleep(delay)
-            if bounce:
-                for i in range(steps):
-                    position = round(high + (low - high) * i / (steps - 1))
-                    a.set_parameter("wah_position", position)
-                    time.sleep(delay)
-            else:
-                a.set_parameter("wah_position", low)
-        return low if bounce else low
+        else:
+            amp.set_parameter("wah_position", low)
+    return low if bounce else low
 
 
 # --- Graphic EQ ------------------------------------------------------------
@@ -578,42 +565,42 @@ EQ_BANDS = ("31hz", "62hz", "125hz", "250hz", "500hz",
 _EQ_CENTRE = 24
 
 
-def get_eq_band(band, amp=None):
+def get_eq_band(band):
     """Return one graphic EQ band in dB (-24 to +24). Band e.g. "1khz"."""
-    return get_parameter(_eq_name(band), amp=amp) - _EQ_CENTRE
+    return get_parameter(_eq_name(band)) - _EQ_CENTRE
 
 
-def set_eq_band(band, decibels, amp=None):
+def set_eq_band(band, decibels):
     """Set one graphic EQ band in dB, -24 to +24. Band e.g. "1khz"."""
     if not -_EQ_CENTRE <= decibels <= _EQ_CENTRE:
         raise KatanaError(
             f"EQ gain must be -{_EQ_CENTRE} to +{_EQ_CENTRE} dB, got {decibels}"
         )
-    set_parameter(_eq_name(band), decibels + _EQ_CENTRE, amp=amp)
+    set_parameter(_eq_name(band), decibels + _EQ_CENTRE)
     return decibels
 
 
-def get_eq(amp=None):
+def get_eq():
     """Return {band: dB} for all ten bands."""
-    with _connection(amp) as a:
-        return {b: get_eq_band(b, amp=a) for b in EQ_BANDS}
+    amp = connect()
+    return {b: get_eq_band(b) for b in EQ_BANDS}
 
 
-def set_eq(amp=None, **bands):
+def set_eq(**bands):
     """Set several bands at once, in dB.
 
         set_eq(**{"125hz": 3, "1khz": -2})
     """
-    with _connection(amp) as a:
-        for band, decibels in bands.items():
-            set_eq_band(band, decibels, amp=a)
+    amp = connect()
+    for band, decibels in bands.items():
+        set_eq_band(band, decibels)
 
 
-def reset_eq(amp=None):
+def reset_eq():
     """Set every graphic EQ band flat."""
-    with _connection(amp) as a:
-        for band in EQ_BANDS:
-            set_eq_band(band, 0, amp=a)
+    amp = connect()
+    for band in EQ_BANDS:
+        set_eq_band(band, 0)
 
 
 def _eq_name(band):
@@ -669,20 +656,20 @@ for _name in PARAMETERS:
 del _name
 
 
-def use_effect(slot, effect, amp=None):
+def use_effect(slot, effect):
     """Point an FX slot at an effect and switch it on. Slot is 1 or 2.
 
         use_effect(1, "Phaser")
     """
     if slot not in (1, 2):
         raise KatanaError(f"FX slot must be 1 or 2, got {slot}")
-    with _connection(amp) as a:
-        number = effect
-        if isinstance(number, str):
-            number = _match(number, EFFECT_TYPES, "effect")
-        a.set_parameter(f"fx{slot}_type", number)
-        a.set_parameter(f"fx{slot}_switch", 1)
-        return number, EFFECT_TYPES.get(number, str(number))
+    amp = connect()
+    number = effect
+    if isinstance(number, str):
+        number = _match(number, EFFECT_TYPES, "effect")
+    amp.set_parameter(f"fx{slot}_type", number)
+    amp.set_parameter(f"fx{slot}_switch", 1)
+    return number, EFFECT_TYPES.get(number, str(number))
 
 
 # --- Patch memory ----------------------------------------------------------
@@ -690,31 +677,31 @@ def use_effect(slot, effect, amp=None):
 # The eight stored sounds behind the CH buttons. Editing these does not
 # disturb what is playing; select_channel() then loads one.
 
-def save_to_patch(patch, amp=None):
+def save_to_patch(patch):
     """Copy the current live sound into stored patch 1-9.
 
     Patch 1-4 are BANK A CH1-4, 6-9 are BANK B CH1-4.
     """
-    with _connection(amp) as a:
-        return a.copy_live_to_patch(patch)
+    amp = connect()
+    return amp.copy_live_to_patch(patch)
 
 
-def read_patch_parameter(patch, name, amp=None):
+def read_patch_parameter(patch, name):
     """Read one named parameter from a stored patch without loading it."""
     address, _, _ = PARAMETERS[name] if name in PARAMETERS else (None, 0, 0)
     if address is None:
         raise KatanaError(f"Unknown parameter {name!r}")
-    with _connection(amp) as a:
-        return a.read_patch(patch, address - 0x60000000, 1)[0]
+    amp = connect()
+    return amp.read_patch(patch, address - 0x60000000, 1)[0]
 
 
-def get_patch_names(amp=None):
+def get_patch_names():
     """Return {patch_number: name} for all nine stored patches."""
     names = {}
-    with _connection(amp) as a:
-        for patch in range(1, 10):
-            raw = a.read_patch(patch, 0x00, 16)
-            names[patch] = "".join(chr(b) for b in raw if 0x20 <= b < 0x7F).strip()
+    amp = connect()
+    for patch in range(1, 10):
+        raw = amp.read_patch(patch, 0x00, 16)
+        names[patch] = "".join(chr(b) for b in raw if 0x20 <= b < 0x7F).strip()
     return names
 
 
@@ -724,10 +711,10 @@ def get_patch_names(amp=None):
 # Change, which is what the manual documents - this is the real way to
 # change channel, and the panel LEDs follow.
 
-def select_channel(channel, amp=None):
+def select_channel(channel):
     """Switch channel: "a1".."a4", "panel", "b1".."b4", or a number 1-9."""
-    with _connection(amp) as a:
-        return a.select_channel(channel)
+    amp = connect()
+    return amp.select_channel(channel)
 
 
 def list_channels():
@@ -735,10 +722,10 @@ def list_channels():
     return dict(CHANNELS)
 
 
-def get_patch_name(amp=None):
+def get_patch_name():
     """Return the name of the patch currently loaded."""
-    with _connection(amp) as a:
-        return a.read_patch_name()
+    amp = connect()
+    return amp.read_patch_name()
 
 
 # --- Effect switching by CC ------------------------------------------------
@@ -746,22 +733,22 @@ def get_patch_name(amp=None):
 # The manual's documented way to toggle effect blocks. Equivalent to the
 # *_on/*_off helpers, but uses the same messages a footswitch would.
 
-def switch_effect(name, on, amp=None):
+def switch_effect(name, on):
     """Toggle an effect block by CC: boost, mod, fx, delay, reverb, effect_loop."""
-    with _connection(amp) as a:
-        return a.switch_effect(name, on)
+    amp = connect()
+    return amp.switch_effect(name, on)
 
 
-def send_cc(control, value, amp=None):
+def send_cc(control, value):
     """Send a raw Control Change to the amp."""
-    with _connection(amp) as a:
-        a.send_control_change(control, value)
-        return value
+    amp = connect()
+    amp.send_control_change(control, value)
+    return value
 
 
-def set_expression(value, amp=None):
+def set_expression(value):
     """Move the external expression pedal (CC 82), 0-127."""
-    return send_cc(82, value, amp=amp)
+    return send_cc(82, value)
 
 
 def list_control_changes():
@@ -782,16 +769,16 @@ def list_control_changes():
 LED_SECTIONS = ("boost", "mod", "fx", "delay", "reverb")
 
 
-def get_led(section, amp=None):
+def get_led(section):
     """Return (number, colour_name) for one section's colour channel.
 
     `section` is one of boost, mod, fx, delay, reverb.
     """
-    value = get_parameter(_led_name(section), amp=amp)
+    value = get_parameter(_led_name(section))
     return value, LED_COLOURS.get(value, str(value))
 
 
-def set_led(section, colour, amp=None):
+def set_led(section, colour):
     """Store a colour channel value. DOES NOT change the panel or the sound.
 
     The write is accepted and reads back, but has no audible or visible
@@ -799,21 +786,21 @@ def set_led(section, colour, amp=None):
     """
     if isinstance(colour, str):
         colour = _match(colour, LED_COLOURS, "colour")
-    set_parameter(_led_name(section), colour, amp=amp)
+    set_parameter(_led_name(section), colour)
     return colour, LED_COLOURS.get(colour, str(colour))
 
 
-def get_leds(amp=None):
+def get_leds():
     """Return {section: colour_name} for all five sections."""
-    with _connection(amp) as a:
-        return {s: get_led(s, amp=a)[1] for s in LED_SECTIONS}
+    amp = connect()
+    return {s: get_led(s)[1] for s in LED_SECTIONS}
 
 
-def set_leds(colour, amp=None):
+def set_leds(colour):
     """Store the same colour value for every section. Has no visible effect."""
-    with _connection(amp) as a:
-        for section in LED_SECTIONS:
-            set_led(section, colour, amp=a)
+    amp = connect()
+    for section in LED_SECTIONS:
+        set_led(section, colour)
 
 
 def _led_name(section):
@@ -832,37 +819,37 @@ def list_led_colours():
 
 # --- Overview --------------------------------------------------------------
 
-def show_settings(amp=None):
+def show_settings():
     """Print everything the amp is currently set to. Returns a dict."""
-    with _connection(amp) as a:
-        panel = a.read_panel()
-        # Only the parameters this overview prints. Reading all of them
-        # would be slow, and effect blocks do not answer unless their
-        # effect is the one currently loaded in the slot.
-        wanted = (
-            "amp_type", "gain", "volume", "bass", "middle", "treble",
-            "presence", "boost_switch", "boost_type", "boost_drive",
-            "boost_level", "fx1_switch", "fx1_type", "fx2_switch",
-            "fx2_type", "delay_switch", "delay_type", "delay_feedback",
-            "delay_level", "delay2_switch", "delay2_type",
-            "delay2_feedback", "delay2_level", "reverb_switch",
-            "reverb_type", "reverb_time", "reverb_level", "pedal_switch",
-            "pedal_type", "wah_type", "wah_position", "eq_switch",
-            "noise_suppressor_switch", "noise_suppressor_threshold",
-            "noise_suppressor_release",
-        ) + tuple(f"led_{section}" for section in LED_SECTIONS)
+    amp = connect()
+    panel = amp.read_panel()
+    # Only the parameters this overview prints. Reading all of them
+    # would be slow, and effect blocks do not answer unless their
+    # effect is the one currently loaded in the slot.
+    wanted = (
+        "amp_type", "gain", "volume", "bass", "middle", "treble",
+        "presence", "boost_switch", "boost_type", "boost_drive",
+        "boost_level", "fx1_switch", "fx1_type", "fx2_switch",
+        "fx2_type", "delay_switch", "delay_type", "delay_feedback",
+        "delay_level", "delay2_switch", "delay2_type",
+        "delay2_feedback", "delay2_level", "reverb_switch",
+        "reverb_type", "reverb_time", "reverb_level", "pedal_switch",
+        "pedal_type", "wah_type", "wah_position", "eq_switch",
+        "noise_suppressor_switch", "noise_suppressor_threshold",
+        "noise_suppressor_release",
+    ) + tuple(f"led_{section}" for section in LED_SECTIONS)
 
-        values = {}
-        for name in wanted:
-            try:
-                values[name] = a.get_parameter(name)
-            except KatanaError:
-                values[name] = 0
-        for name in ("delay_time", "delay2_time"):
-            try:
-                values[name] = a.get_wide_parameter(name)
-            except KatanaError:
-                values[name] = 0
+    values = {}
+    for name in wanted:
+        try:
+            values[name] = amp.get_parameter(name)
+        except KatanaError:
+            values[name] = 0
+    for name in ("delay_time", "delay2_time"):
+        try:
+            values[name] = amp.get_wide_parameter(name)
+        except KatanaError:
+            values[name] = 0
 
     def named(table, key):
         value = values[key]
