@@ -8,10 +8,9 @@ surface on top of it that runs on a Raspberry Pi and works from a phone.
 
 ```
 katana_amp/        the library - no printing, no prompts, reusable
-  katana.py        the MIDI protocol and the Katana connection class
+  katana.py        the MIDI protocol, the Katana class, and the shared connect()
   param.py         Param: every setting, with its address, range and kind
   kind.py          Kind: what sort of control a setting is (knob, switch, dropdown)
-  controls.py      the shared connection, get/set_parameter, wah, channels
   tsl.py           read and load BOSS Tone Studio .tsl files
 server/            FastAPI app: amp API and the UI on one port
   app.py           creates the app and plugs the parts in
@@ -59,19 +58,20 @@ what the code autodetects; MIDI 2 and 3 do not answer parameter queries.
 ## Using it from Python
 
 ```python
-from katana_amp.controls import get_parameter, set_parameter
+from katana_amp.katana import connect
 from katana_amp.param import Param
 
-set_parameter(Param.GAIN, 75)
-get_parameter(Param.REVERB_LEVEL)          # 38
-set_parameter(Param.AMP_TYPE, 24)          # 5150 Drive
-set_parameter(Param.EQ_BAND_1KHZ, -4)      # EQ in dB, -24 to +24
-set_parameter(Param.DELAY_TIME, 500)       # milliseconds
+amp = connect()                                # the shared connection
+amp.set_parameter(Param.GAIN, 75)
+amp.get_parameter(Param.REVERB_LEVEL)          # 38
+amp.set_parameter(Param.AMP_TYPE, 24)          # 5150 Drive
+amp.set_parameter(Param.EQ_BAND_1KHZ, -4)      # EQ in dB, -24 to +24
+amp.set_parameter(Param.DELAY_TIME, 500)       # milliseconds
 ```
 
-Everything shares one connection to the amp, opened on first use, so there
-is nothing to pass around. `disconnect()` releases the MIDI port; the next
-call reopens it. Errors raise `KatanaError`, and out-of-range values are
+`connect()` hands out one shared connection to the amp, opened on first
+use - calling it again returns the same one. `disconnect()` releases the
+MIDI port; the next `connect()` reopens it. Errors raise `KatanaError`, and out-of-range values are
 rejected before anything is sent to the amp.
 
 ### Every setting is a `Param`
@@ -104,9 +104,9 @@ Each effect keeps its own settings whatever the FX slots are switched to,
 so you can dial one in *before* selecting it:
 
 ```python
-set_parameter(Param.PHASER_RATE, 80)
-set_parameter(Param.FX1_TYPE, 19)          # Phaser, into slot 1
-set_parameter(Param.FX1_SWITCH, 1)
+amp.set_parameter(Param.PHASER_RATE, 80)
+amp.set_parameter(Param.FX1_TYPE, 19)          # Phaser, into slot 1
+amp.set_parameter(Param.FX1_SWITCH, 1)
 ```
 
 ### Channels and stored patches
@@ -116,12 +116,11 @@ Your head stores **8 sounds**: BANK A CH1–4 and BANK B CH1–4, plus PANEL
 what the official manual documents:
 
 ```python
-from katana_amp.controls import get_patch_names, save_to_patch, select_channel
-
-select_channel("a1")        # BANK A CH1
-select_channel("panel")     # the panel knobs
-get_patch_names()           # {1: 'KATANA Mk2', 2: 'kill em', ...}
-save_to_patch(3)            # copy the whole live sound into patch 3
+amp.select_channel("a1")        # BANK A CH1
+amp.select_channel("panel")     # the panel knobs
+amp.read_channel()              # 'panel' - which one the amp is on
+amp.read_patch_names()          # {1: 'KATANA Mk2', 2: 'kill em', ...}
+amp.copy_live_to_patch(3)       # copy the whole live sound into patch 3
 ```
 
 Programs: `a1`–`a4` = PC 1–4, `panel` = PC 5, `b1`–`b4` = PC 6–9.
@@ -131,7 +130,7 @@ number counted from 0 (B2 reads `[0, 6]`). The server reads it with every
 refresh, so the UI shows the real channel. The amp does **not** announce
 channel changes made with its own CH buttons; press Resync to pick those up.
 
-`save_to_patch()` copies **everything** — amp, EQ, all effect blocks, both
+`copy_live_to_patch()` copies **everything** — amp, EQ, all effect blocks, both
 delays, reverb, wah — about 2.2 KB, the entire patch. It overwrites the
 stored channel permanently, so point it somewhere you do not mind losing.
 
@@ -141,10 +140,8 @@ The manual's CC map, the same messages a footswitch sends
 (0–63 = off, 64–127 = on):
 
 ```python
-from katana_amp.controls import send_cc
-
-send_cc(16, 0)       # boost off
-send_cc(19, 127)     # delay on
+amp.send_control_change(16, 0)       # boost off
+amp.send_control_change(19, 127)     # delay on
 ```
 
 | CC | Effect | | CC | Effect |
@@ -165,7 +162,7 @@ buttons cycle through. `LED_BOOST`, `LED_MOD`, `LED_FX`, `LED_DELAY` and
 `LED_REVERB` report which one is active:
 
 ```python
-get_parameter(Param.LED_BOOST)         # 2
+amp.get_parameter(Param.LED_BOOST)     # 2
 Param.LED_BOOST.options()[2]           # 'red'
 ```
 
@@ -181,11 +178,11 @@ also do pedal-bend, so it has to be pointed at wah first. Then the sound
 comes from *moving* the treadle:
 
 ```python
-set_parameter(Param.PEDAL_TYPE, 0)     # the pedal section does wah...
-set_parameter(Param.WAH_TYPE, 0)       # ...as a Cry Wah
-set_parameter(Param.PEDAL_SWITCH, 1)
+amp.set_parameter(Param.PEDAL_TYPE, 0)     # the pedal section does wah...
+amp.set_parameter(Param.WAH_TYPE, 0)       # ...as a Cry Wah
+amp.set_parameter(Param.PEDAL_SWITCH, 1)
 
-set_parameter(Param.WAH_POSITION, 80)  # move the treadle
+amp.set_parameter(Param.WAH_POSITION, 80)  # move the treadle
 ```
 
 Voicings: Cry Wah, Vo Wah, Fat Wah, Light Wah, 7String Wah, Reso Wah.
@@ -279,17 +276,18 @@ EXPAND.
 
 ```python
 from katana_amp import tsl
+from katana_amp.katana import connect
 
 bank = tsl.load("pantera.tsl")
 tsl.describe("pantera.tsl")     # summary of every patch in the file
 bank[0].settings()              # {Param: value}, 109 settings
-bank[0].apply()                 # load it into the amp
+bank[0].apply(connect())        # load it into the amp
 ```
 
 `apply()` walks the parameters the file defines and sets each one by
 name. Verified against three different patch files: 109 parameters, zero
 mismatches. It writes to the live area only — follow with
-`controls.save_to_patch(n)` to keep one.
+`amp.copy_live_to_patch(n)` to keep one.
 
 ## API server
 

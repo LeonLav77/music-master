@@ -1,8 +1,5 @@
 """Control a BOSS Katana MkII amplifier over USB MIDI SysEx.
 
-Reusable module: no printing, no CLI, no interactive prompts, so it can later
-be driven headless from a Raspberry Pi UI.
-
 Protocol notes (verified against a Katana MkII 100W head):
 
   Every message is  F0 41 00 00 00 00 33 <op> <addr:4> <payload> <cksum> F7
@@ -18,8 +15,17 @@ Protocol notes (verified against a Katana MkII 100W head):
 
 Every setting the amp exposes is a member of the `Param` enum, in
 param.py; the Katana class here reads and writes them.
+
+There is only one amp, so the app shares one connection to it:
+
+    from katana_amp.katana import connect
+    from katana_amp.param import Param
+
+    amp = connect()                       # opens the port the first time
+    amp.set_parameter(Param.GAIN, 75)
 """
 
+import contextlib
 import time
 
 import mido
@@ -33,16 +39,7 @@ DEVICE_ID = 0x00
 OP_QUERY = 0x11
 OP_SET = 0x12
 
-# Live ("temporary patch") area. Everything the amp is playing right now
-# lives here; user patches 1-9 mirror the same layout at 0x10000000 up.
-#
-# Addresses below are the MkII map, cross-checked against the community
-# address map on VGuitarForums and verified by read/write on a MkII 100W
-# head. They are NOT the same as the 00 00 04 xx addresses documented for
-# the first-generation Katana, which this amp ignores entirely.
 LIVE_BASE = 0x60000000
-
-# Stored patch names are 16 ASCII bytes.
 NAME_LENGTH = 16
 
 class KatanaError(Exception):
@@ -91,10 +88,6 @@ CHANNELS = {
     "b1": 6, "b2": 7, "b3": 8, "b4": 9,
 }
 
-# The channel the amp is on, as a two-byte program number counted from 0:
-# B2 (program 7) reads [0, 6]. Verified on a MkII by switching channels on
-# the panel and reading it back. The amp sends nothing when its CH buttons
-# are pressed, so reading this is the only way to know.
 CURRENT_CHANNEL = 0x00010000
 
 def decode_name(raw):
@@ -261,6 +254,13 @@ class Katana:
         )
         return program
 
+    def read_patch_names(self):
+        """{patch_number: name} for all nine stored patches."""
+        return {
+            patch: decode_name(self.read_patch(patch, 0x00, NAME_LENGTH))
+            for patch in range(1, 10)
+        }
+
     def read_channel(self):
         """The channel the amp is on: "a1".."a4", "panel" or "b1".."b4".
 
@@ -281,12 +281,6 @@ class Katana:
             )
         )
 
-    # --- Patch memory ------------------------------------------------------
-    #
-    # User patches 1-9 mirror the live area's layout, starting at
-    # 0x10000000 and 0x10000 apart. Writing there edits the stored sound
-    # without disturbing what is playing.
-
     PATCH_BASE = 0x10000000
     PATCH_STRIDE = 0x10000
 
@@ -305,18 +299,9 @@ class Katana:
         """Write bytes into a stored patch."""
         self.write(self._encode_address(self.patch_address(patch, offset)), data)
 
-    # The regions a patch actually occupies, as (start, length) offsets from
-    # the base of the patch. The amp leaves gaps between them and does not
-    # answer reads there, so a full copy has to skip those.
     PATCH_REGIONS = ((0x000, 0x740), (0x780, 0x040), (0x800, 0x100))
 
     def copy_live_to_patch(self, patch):
-        """Copy the entire live sound into stored patch 1-9.
-
-        Copies every region the patch occupies - amp, effects, EQ, delays,
-        reverb and the rest - not just the amp block. Returns the number of
-        bytes written.
-        """
         chunk = 0x20
         written = 0
         for start, length in self.PATCH_REGIONS:
@@ -326,3 +311,39 @@ class Katana:
                 self.write_patch(patch, offset, block)
                 written += len(block)
         return written
+
+
+# --- The shared connection -----------------------------------------------
+#
+# There is only ever one amp, so it gets one connection, opened on first use
+# and reused from then on.
+
+_shared = None
+
+
+def connect(port_name=None):
+    """The shared connection: opens it the first time, then returns it.
+
+    A connection that fails to open leaves nothing cached, so the next call
+    tries again from scratch rather than handing back a half-dead object.
+    """
+    global _shared
+    if _shared is None:
+        _shared = Katana(port_name)
+    return _shared
+
+
+def disconnect():
+    """Close the shared connection. The next connect() reopens it."""
+    global _shared
+    if _shared is not None:
+        # A port whose device has been unplugged can raise on close; the
+        # point is to stop using it either way.
+        with contextlib.suppress(Exception):
+            _shared.close()
+        _shared = None
+
+
+def is_connected():
+    """True if the shared connection is currently open."""
+    return _shared is not None

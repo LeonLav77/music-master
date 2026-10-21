@@ -9,9 +9,9 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from katana_amp import controls
+from katana_amp import katana
 from katana_amp import tsl
-from katana_amp.katana import CHANNELS, KatanaError
+from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
 from server import amp, browsers
 
@@ -39,7 +39,7 @@ async def parameters():
 async def status():
     return {
         "connected": amp.is_online(),
-        "port": controls.is_connected(),
+        "port": katana.is_connected(),
         "parameters": len(amp.cache),
     }
 
@@ -59,7 +59,7 @@ async def channels():
     """The selectable channels, and the names of the stored patches."""
     async with amp.lock:
         try:
-            names = await amp.call(controls.get_patch_names, read=True)
+            names = await amp.call(Katana.read_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     return {"channels": CHANNELS, "patches": names}
@@ -72,8 +72,8 @@ async def save_patch(number: int):
         raise HTTPException(422, "Patch number must be 1-9")
     async with amp.lock:
         try:
-            written = await amp.call(controls.save_to_patch, number)
-            names = await amp.call(controls.get_patch_names, read=True)
+            written = await amp.call(Katana.copy_live_to_patch, number)
+            names = await amp.call(Katana.read_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     await browsers.broadcast({"type": "patches", "names": names})
@@ -91,7 +91,7 @@ async def send_cc(control: int, body: Value):
         raise HTTPException(422, "CC value must be 0-127")
     async with amp.lock:
         try:
-            await amp.call(controls.send_cc, control, body.value)
+            await amp.call(Katana.send_control_change, control, body.value)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     return {"cc": control, "value": body.value}

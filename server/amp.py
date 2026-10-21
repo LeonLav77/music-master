@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
 
-from katana_amp import controls
-from katana_amp.katana import KatanaError
+from katana_amp import katana
+from katana_amp.katana import Katana, KatanaError
 from katana_amp.param import Param
 from server import browsers
 
@@ -27,10 +27,15 @@ def state_message():
 
 
 async def call(fn, *args, read=False):
+    # Runs fn(connection, *args) in a thread, so the slow MIDI work never
+    # blocks the server: e.g. call(Katana.select_channel, "b2").
+    def run():
+        return fn(katana.connect(), *args)
+
     try:
-        result = await asyncio.to_thread(fn, *args)
+        result = await asyncio.to_thread(run)
     except KatanaError:
-        controls.disconnect()
+        katana.disconnect()
         _reconnect.set()
         await _set_online(False)
         raise
@@ -48,13 +53,11 @@ async def _set_online(online):
     await browsers.broadcast({"type": "amp", "connected": online})
 
 
-def probe():
-    amp = controls.connect()
-    amp.read(amp._encode_address(Param.GAIN.address()), 1, attempts=1)
+def probe(connection):
+    connection.read(connection._encode_address(Param.GAIN.address()), 1, attempts=1)
 
 
-def refresh():
-    amp = controls.connect()
+def refresh(connection):
 
     # Group the single-byte settings into runs of consecutive addresses.
     singles = sorted(
@@ -74,7 +77,7 @@ def refresh():
             # One attempt: a block the amp will not answer for is a normal
             # outcome here (effect blocks stay silent unless loaded), and
             # retrying every one of them dominates the refresh.
-            data = amp.read(amp._encode_address(start), len(params), attempts=1)
+            data = connection.read(connection._encode_address(start), len(params), attempts=1)
         except KatanaError:
             continue
         for offset, param in enumerate(params):
@@ -85,7 +88,7 @@ def refresh():
     for param in Param:
         if param.size() == 2:
             try:
-                found[param.value] = amp.get_parameter(param)
+                found[param.value] = connection.get_parameter(param)
             except KatanaError:
                 continue
 
@@ -97,7 +100,7 @@ def refresh():
 
     global _channel
     with contextlib.suppress(KatanaError):
-        _channel = amp.read_channel()
+        _channel = connection.read_channel()
     return found
 
 
@@ -111,7 +114,7 @@ async def _reconnect_loop():
                 await call(probe, read=True)
                 values = await call(refresh, read=True)
                 with contextlib.suppress(KatanaError):
-                    names = await call(controls.get_patch_names, read=True)
+                    names = await call(Katana.read_patch_names, read=True)
         except Exception:
             await asyncio.sleep(RECONNECT_INTERVAL)
             continue
@@ -132,4 +135,4 @@ async def lifespan(app):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        controls.disconnect()
+        katana.disconnect()

@@ -6,7 +6,7 @@
     for patch in bank:
         print(patch.name, patch.get(Param.GAIN))
 
-    bank[0].apply()         # load the first patch into the amp
+    bank[0].apply(connect())   # load the first patch into the amp
 
 A .tsl file is JSON holding one or more patches, each a set of named byte
 blocks ("UserPatch%Patch_0", "UserPatch%Fx(1)", ...). Those blocks are the
@@ -17,7 +17,6 @@ straight to the amp.
 import json
 import time
 
-from katana_amp.controls import connect
 from katana_amp.katana import LIVE_BASE, KatanaError, decode_name
 from katana_amp.param import Param
 
@@ -73,7 +72,7 @@ class Patch:
                 found[param] = param.decode(data)
         return found
 
-    def apply(self, settle=0.02):
+    def apply(self, amp, settle=0.02):
         """Load this patch by setting each named parameter individually.
 
         Rather than copying the file's raw bytes - whose effect blocks do
@@ -84,8 +83,6 @@ class Patch:
         Only parameters this project has mapped are set; anything else in
         the file is ignored. Returns (applied, skipped).
         """
-        amp = connect()
-
         values = self.settings()
 
         # Effect switches last, so a section is configured before it is

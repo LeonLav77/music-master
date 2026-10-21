@@ -11,8 +11,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from katana_amp import controls
-from katana_amp.katana import CHANNELS, KatanaError
+from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
 from server import amp, browsers
 
@@ -32,7 +31,7 @@ async def _apply_parameter(name, value, origin=None):
         raise KatanaError(f"{name} must be between {low} and {high}")
 
     async with amp.lock:
-        await amp.call(controls.set_parameter, param, value)
+        await amp.call(Katana.set_parameter, param, value)
 
     amp.cache[name] = value
     await browsers.broadcast(
@@ -48,13 +47,13 @@ async def _select_channel(name):
     name = name.lower()
 
     async with amp.lock:
-        current = await amp.call(controls.read_channel, read=True)
+        current = await amp.call(Katana.read_channel, read=True)
         if current == name:
             detour = "a2" if name != "a2" else "a1"
-            await amp.call(controls.select_channel, detour)
+            await amp.call(Katana.select_channel, detour)
             await asyncio.sleep(0.5)
 
-        await amp.call(controls.select_channel, name)
+        await amp.call(Katana.select_channel, name)
         await asyncio.sleep(1.2)
         values = await amp.call(amp.refresh, read=True)
 

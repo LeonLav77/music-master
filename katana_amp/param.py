@@ -19,8 +19,6 @@ from katana_amp.kind import Kind
 
 
 class Param(StrEnum):
-    """Every setting the amp exposes. The value is its name, e.g. "gain"."""
-
     # --- Amp -------------------------------------------------------------
     AMP_TYPE = "amp_type"
     GAIN = "gain"
