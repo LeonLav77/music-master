@@ -75,6 +75,11 @@ def select_channel(channel):
     return connect().select_channel(channel)
 
 
+def read_channel():
+    """The channel the amp is on right now, e.g. "b2" (None if unknown)."""
+    return connect().read_channel()
+
+
 def save_to_patch(patch):
     """Copy the current live sound into stored patch 1-9. Overwrites it.
 

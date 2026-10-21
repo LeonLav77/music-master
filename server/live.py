@@ -21,11 +21,12 @@ router = APIRouter()
 
 async def _apply_parameter(name, value, origin=None):
     try:
-        param = Param(name)               # like Laravel's Param::from("gain")
+        param = Param(name)
     except ValueError:
         raise KatanaError(f"Unknown parameter {name!r}")
     if not param.is_writable():
         raise KatanaError(f"{name} is read-only on this amp")
+    
     low, high = param.range()
     if not low <= value <= high:
         raise KatanaError(f"{name} must be between {low} and {high}")
@@ -40,17 +41,19 @@ async def _apply_parameter(name, value, origin=None):
     return value
 
 
-async def _select_channel(name, origin=None):
+async def _select_channel(name):
     """Switch channel and re-read."""
     if not isinstance(name, str) or name.lower() not in CHANNELS:
         raise KatanaError(f"Unknown channel {name!r}")
+    name = name.lower()
 
     async with amp.lock:
-        # Re-selecting the channel the amp is already on does nothing,
-        # so bounce via another one to force a reload from memory.
-        other = "a2" if name.lower() != "a2" else "a1"
-        await amp.call(controls.select_channel, other)
-        await asyncio.sleep(0.5)
+        current = await amp.call(controls.read_channel, read=True)
+        if current == name:
+            detour = "a2" if name != "a2" else "a1"
+            await amp.call(controls.select_channel, detour)
+            await asyncio.sleep(0.5)
+
         await amp.call(controls.select_channel, name)
         await asyncio.sleep(1.2)
         values = await amp.call(amp.refresh, read=True)
@@ -62,29 +65,12 @@ async def _select_channel(name, origin=None):
 
 @router.websocket("/ws")
 async def websocket(client: WebSocket):
-    """The live connection: every change to the amp goes through here.
-
-    Sends on connect, then whenever something changes:
-      {"type": "amp",       "connected": true}
-      {"type": "state",     "values": {...}, "channel": "b3"}
-      {"type": "parameter", "name": "gain", "value": 75}
-      {"type": "channel",   "channel": "a1", "values": {...}}
-      {"type": "patch",     "name": "...", "values": {...}}
-      {"type": "patches",   "names": {"1": "...", ...}}
-      {"type": "error",     "detail": "..."}
-
-    Accepts:
-      {"type": "set",     "name": "gain", "value": 75}
-      {"type": "channel", "name": "b2"}
-    """
     await client.accept()
     amp.clients.add(client)
+
     try:
         if not amp.cache:
             async with amp.lock:
-                # No amp yet is not a reason to refuse the socket: the
-                # reconnect loop will push the state the moment it appears,
-                # and a client that stays connected sees that happen.
                 with contextlib.suppress(KatanaError):
                     await amp.call(amp.refresh, read=True)
         await client.send_text(
@@ -101,18 +87,18 @@ async def websocket(client: WebSocket):
             if not isinstance(message, dict):
                 continue
 
-            kind = message.get("type")
+            message_type = message.get("type")
 
-            if kind == "channel":
+            if message_type == "channel":
                 try:
-                    await _select_channel(message["name"], origin=client)
+                    await _select_channel(message["name"])
                 except (KatanaError, KeyError) as exc:
                     await client.send_text(
                         json.dumps({"type": "error", "detail": str(exc)})
                     )
                 continue
 
-            if kind == "set":
+            if message_type == "set":
                 try:
                     await _apply_parameter(
                         message["name"], int(message["value"]), origin=client
