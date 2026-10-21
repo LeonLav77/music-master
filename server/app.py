@@ -1,5 +1,4 @@
-"""The server: the amp API and the aux deck, with the control surface on
-the same port.
+"""The server: the amp API, with the control surface on the same port.
 
     ./run                 API + UI on :8000
     ./run --no-ui         API only
@@ -9,45 +8,23 @@ One process, one port. The UI is same-origin with the API, so the page uses
 relative URLs and there is nothing to configure - which is what makes
 `--port` actually work, and what makes this a single systemd unit on a Pi.
 
-The halves stay separable in the code rather than in the deployment:
-`server.api` is the amp and knows nothing about a UI, `server.audio` plays
-backing tracks and knows nothing about MIDI, `server.wifi` manages networks
-and knows nothing about either, `server.ui` is a static mount
-and knows nothing about any of them. This module is the only place that
-knows about all four.
+The parts stay separable in the code rather than in the deployment:
+`server.api` is the amp and knows nothing about a UI, `server.wifi` manages
+networks and knows nothing about the amp, and `server.ui` is a static mount
+that knows nothing about either. This module is the only place that knows
+about all three.
 """
-
-import contextlib
 
 from fastapi import FastAPI
 
-from server import api, audio, ui, wifi
-
-
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    """Run the amp's reconnect loop and the audio player's cleanup together.
-
-    Two independent subsystems, so two independent context managers rather
-    than one merged loop - either can fail to start without taking the
-    other down with it, which matters because the amp is regularly absent
-    and the speakers are not.
-    """
-    # The deck pushes transport state over the amp API's WebSocket - there
-    # is only one, and a second would be a second thing to reconnect. Wired
-    # here rather than by either module importing the other, so both stay
-    # independently mountable.
-    audio.set_publisher(api.broadcast)
-    async with api.lifespan(app), audio.lifespan(app):
-        yield
+from server import api, ui, wifi
 
 
 def create_app(serve_ui=True):
     """Build the application. Set serve_ui=False for the API on its own."""
-    app = FastAPI(title="Katana MkII", version="1.0", lifespan=lifespan)
+    app = FastAPI(title="Katana MkII", version="1.0", lifespan=api.lifespan)
 
     app.include_router(api.router)
-    app.include_router(audio.router)
     app.include_router(wifi.router)
 
     # Last: the UI mounts at "/" and would otherwise shadow the API.

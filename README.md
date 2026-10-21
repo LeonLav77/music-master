@@ -11,17 +11,14 @@ katana_amp/        the library - no printing, no prompts, reusable
   katana.py        protocol, address map, parameter tables
   controls.py      friendly helpers - set_gain(75), cry_wah(), ...
   tsl.py           read and load BOSS Tone Studio .tsl files
-  audio.py         backing tracks out the analog jack, into AUX IN
-server/            FastAPI app: amp API, aux deck, wifi, and the UI on one port
+server/            FastAPI app: amp API, wifi, and the UI on one port
 web/               the control surface - plain HTML, CSS and JS, no build step
-scripts/
-  aux-play.sh      play one track into AUX IN from the terminal
 run                start the server
 requirements.txt   Python dependencies
 ```
 
-`patches/` (Tone Studio files) and `tracks/` (backing tracks) are created
-as you use them and are not part of the code.
+`patches/` (Tone Studio files) is created as you use it and is not part
+of the code.
 
 ## Setup
 
@@ -31,8 +28,7 @@ python3 -m venv venv
 ```
 
 On a Pi, `python-rtmidi` compiles from source and needs
-`python3-dev build-essential libasound2-dev` installed first. Backing
-tracks also need `ffmpeg` and PipeWire (`pw-play`).
+`python3-dev build-essential libasound2-dev` installed first.
 
 ## Running
 
@@ -363,8 +359,7 @@ worked out, so roughly half those bytes land in the wrong place. Use
 ```
 
 Then open **http://localhost:8000** for the control surface — amp knobs,
-effect pedals, graphic EQ, wah treadle, channels and the backing-track
-deck. It follows the amp live over the WebSocket, so changing a channel
+effect pedals, graphic EQ, wah treadle and channels. It follows the amp live over the WebSocket, so changing a channel
 moves the knobs.
 
 Serves on `0.0.0.0:8000` so another machine can reach it (use the Pi's
@@ -385,7 +380,6 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `POST /api/patch/{number}` | Save the live sound into a stored channel |
 | `POST /api/wah/rock`, `/api/wah/sweep` | Move the wah treadle automatically |
 | `POST /api/cc/{control}` | Send a raw Control Change, as a footswitch would |
-| `/api/audio/...` | Backing tracks: list, play, pause, seek, volume, fetch from a URL |
 | `/api/wifi/...` | Scan, join, list and forget wifi networks (via `nmcli`) |
 | `WS /ws` | Live state pushes, including `{"type":"amp","connected":false}` when the amp comes and goes |
 
