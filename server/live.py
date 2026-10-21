@@ -13,7 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from katana_amp import controls
 from katana_amp.katana import CHANNELS, KatanaError
-from katana_amp.params import Param
+from katana_amp.param import Param
 from server import amp
 
 router = APIRouter()

@@ -4,7 +4,7 @@ There is only one amp, so everything shares a single connection that opens
 on first use. Nothing to pass around, nothing to close:
 
     from katana_amp.controls import get_parameter, set_parameter
-    from katana_amp.params import Param
+    from katana_amp.param import Param
 
     set_parameter(Param.GAIN, 75)
     get_parameter(Param.REVERB_LEVEL)
@@ -17,7 +17,7 @@ a bad one raises KatanaError rather than reaching the amp.
 import contextlib
 
 from katana_amp.katana import NAME_LENGTH, Katana, decode_name
-from katana_amp.params import Param
+from katana_amp.param import Param
 
 # There is only ever one amp, so it gets a single connection that is opened
 # on first use and reused from then on.

@@ -13,7 +13,7 @@ import json
 
 from katana_amp import controls
 from katana_amp.katana import KatanaError
-from katana_amp.params import Param
+from katana_amp.param import Param
 
 # One MIDI port, one conversation at a time. Everything that touches the
 # amp holds this.

@@ -19,7 +19,7 @@ import time
 
 from katana_amp.controls import connect
 from katana_amp.katana import LIVE_BASE, KatanaError, decode_name
-from katana_amp.params import AMP_TYPES, Param
+from katana_amp.param import Param
 
 # Which memory offset each named block starts at, relative to the base of a
 # patch. Derived by matching the block contents against the amp's own layout.
@@ -136,6 +136,6 @@ def describe(path):
         amp_type = patch.get(Param.AMP_TYPE)
         print(
             f"{index}. {patch.name:20s} "
-            f"{AMP_TYPES.get(amp_type, f'amp {amp_type}'):16s} "
+            f"{Param.AMP_TYPE.options().get(amp_type, f'amp {amp_type}'):16s} "
             f"gain {patch.get(Param.GAIN)}  vol {patch.get(Param.VOLUME)}"
         )

@@ -9,7 +9,8 @@ surface on top of it that runs on a Raspberry Pi and works from a phone.
 ```
 katana_amp/        the library - no printing, no prompts, reusable
   katana.py        the MIDI protocol and the Katana connection class
-  params.py        Param: every setting, with its address, range and kind
+  param.py         Param: every setting, with its address, range and kind
+  kind.py          Kind: what sort of control a setting is (knob, switch, dropdown)
   controls.py      the shared connection, get/set_parameter, wah, channels
   tsl.py           read and load BOSS Tone Studio .tsl files
 server/            FastAPI app: amp API and the UI on one port
@@ -58,7 +59,7 @@ what the code autodetects; MIDI 2 and 3 do not answer parameter queries.
 
 ```python
 from katana_amp.controls import get_parameter, set_parameter
-from katana_amp.params import Param
+from katana_amp.param import Param
 
 set_parameter(Param.GAIN, 75)
 get_parameter(Param.REVERB_LEVEL)          # 38
@@ -74,7 +75,7 @@ rejected before anything is sent to the amp.
 
 ### Every setting is a `Param`
 
-`Param` in `katana_amp/params.py` is a backed enum, like Laravel's: each
+`Param` in `katana_amp/param.py` is a backed enum, like Laravel's: each
 case is a readable name, and its methods answer questions about it. Each
 method uses `match`, listing the exceptions and ending in a default
 `case _` for the common answer (a 0-100 knob, one byte, writable).
@@ -384,7 +385,7 @@ It talks to the server through `web/js/transport.js` and nothing else —
 changes go over the WebSocket, with HTTP as the fallback.
 
 The UI fetches the parameter schema from `/api/parameters` when it loads,
-so a change to `params.py` reaches it after a server restart.
+so a change to `param.py` reaches it after a server restart.
 
 See `web/README.md` for the file-by-file layout.
 

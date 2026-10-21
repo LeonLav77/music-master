@@ -151,7 +151,7 @@ export const delayParams = (prefix) => [
 /** Merge a display label with the amp's real range/kind. */
 export function resolve(display) {
   const param = PARAM_BY_KEY[display.key];
-  if (!param) throw new Error(`Unknown parameter ${display.key} - not in params.py`);
+  if (!param) throw new Error(`Unknown parameter ${display.key} - not in param.py`);
   return {
     key: display.key,
     label: display.label,

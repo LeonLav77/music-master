@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from katana_amp import controls
 from katana_amp import tsl
 from katana_amp.katana import CHANNELS, KatanaError
-from katana_amp.params import EQ_BANDS, Param, describe_parameters
+from katana_amp.param import Param
 from server import amp
 
 # Tone Studio patch files live here, next to the project root.
@@ -21,7 +21,7 @@ PATCH_DIR = ROOT / "patches"
 
 router = APIRouter()
 
-SCHEMA = describe_parameters()
+SCHEMA = Param.schema()
 
 
 class Value(BaseModel):
@@ -127,8 +127,9 @@ async def list_tsl():
                 "name": patch.name,
                 "settings": {param.value: settings[param] for param in preview if param in settings},
             }
-            eq = [settings[band] for band in EQ_BANDS if band in settings]
-            if len(eq) == len(EQ_BANDS):
+            bands = Param.eq_bands()
+            eq = [settings[band] for band in bands if band in settings]
+            if len(eq) == len(bands):
                 entry["eq"] = eq
             entries.append(entry)
 

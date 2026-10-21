@@ -34,7 +34,7 @@ you opened it at, with no configuration and no CORS.
 
 `js/schema.js` fetches the parameter tables from the server rather than
 keeping its own copy, so the UI and the amp cannot disagree about ranges or
-enum numbering. Change a parameter in `params.py`, restart the server, and
+enum numbering. Change a parameter in `param.py`, restart the server, and
 the UI picks it up on the next reload.
 
 ## Notes

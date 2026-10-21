@@ -17,7 +17,7 @@ Protocol notes (verified against a Katana MkII 100W head):
   patches 1-9 mirror that layout from 0x10 00 00 xx up.
 
 Every setting the amp exposes is a member of the `Param` enum, in
-params.py; the Katana class here reads and writes them.
+param.py; the Katana class here reads and writes them.
 """
 
 import time
@@ -108,7 +108,7 @@ class Katana:
     Usable as a context manager so the MIDI ports always get closed:
 
         with Katana() as amp:
-            print(amp.get_parameter(Param.GAIN))    # Param from params.py
+            print(amp.get_parameter(Param.GAIN))    # Param from param.py
     """
 
     def __init__(self, port_name=None, timeout=1.0, midi_channel=1):
