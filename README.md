@@ -426,8 +426,6 @@ One process serves both the API and the page:
 
 ```bash
 ./run                 # API and UI on :8000
-./run --port 9000     # both, somewhere else
-./run --no-ui         # the API on its own
 ```
 
 Then open `http://localhost:8000`, or `http://<this-machine>:8000` from a
@@ -438,9 +436,8 @@ The page is same-origin with the API, so it uses relative URLs and needs no
 configuration wherever you open it from. Set `window.KATANA_API_URL` in
 `web/index.html` only if you serve the page separately from the API.
 
-The split is in the code rather than the deployment: `server/api.py` is the
-amp and knows nothing about a UI, `server/ui.py` is the static mount, and
-`server/app.py` is the only place that knows about both.
+`server/api.py` is the amp and knows nothing about a UI; `server/app.py`
+plugs it in and serves `web/` alongside it.
 
 It talks to the server through `web/js/transport.js` and nothing else —
 changes go over the WebSocket, with HTTP as the fallback.
