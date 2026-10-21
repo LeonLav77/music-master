@@ -133,29 +133,6 @@ export const transport = {
     return request(`/api/patch/${number}`, { method: "POST" });
   },
 
-  /** Server-side treadle sweep - one request, never stepped from the browser. */
-  sweepWah(from, to, ms) {
-    const steps = 25;
-    void request("/api/wah/sweep", {
-      method: "POST",
-      body: JSON.stringify({
-        start: from,
-        end: to,
-        steps,
-        delay: Math.max(ms / steps / 1000, 0.01),
-      }),
-    }).catch((error) => console.error("[katana]", error));
-  },
-
-  /** Repeating wah gesture - N sweeps of low..high, `seconds` each.
-   *  Server-side for the same reason as sweepWah: hundreds of MIDI writes. */
-  rockWah({ intervals, low, high, seconds, bounce }) {
-    return request("/api/wah/rock", {
-      method: "POST",
-      body: JSON.stringify({ intervals, low, high, seconds, bounce }),
-    });
-  },
-
   /** Full state re-read. The amp never reports physical knob turns. */
   async resync() {
     return request("/api/refresh", { method: "POST" });

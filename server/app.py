@@ -1,10 +1,3 @@
-"""The server: the amp API and the web page, on port 8000.
-
-    ./run
-
-Open http://<this machine's address>:8000 from any device on the network.
-"""
-
 from pathlib import Path
 
 import uvicorn

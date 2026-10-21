@@ -7,7 +7,7 @@ Live changes - knobs, channel switches - go over the WebSocket instead
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from katana_amp import controls
 from katana_amp import tsl
@@ -26,24 +26,6 @@ SCHEMA = describe_parameters()
 
 class Value(BaseModel):
     value: int
-
-
-class Sweep(BaseModel):
-    start: int = Field(0, ge=0, le=100)
-    end: int = Field(100, ge=0, le=100)
-    steps: int = Field(25, ge=2, le=200)
-    # Bounded, like rock's total: the lock is held for the whole sweep.
-    delay: float = Field(0.04, ge=0, le=0.5)
-
-
-class Rock(BaseModel):
-    """A repeating wah gesture: `intervals` sweeps, `seconds` each."""
-
-    intervals: int = 4
-    low: int = 0
-    high: int = 50
-    seconds: float = 2.3
-    bounce: bool = True
 
 
 # --- Schema and state ------------------------------------------------------
@@ -97,75 +79,6 @@ async def save_patch(number: int):
             raise HTTPException(503, str(exc))
     await amp.broadcast({"type": "patches", "names": names})
     return {"patch": number, "bytes": written, "names": names}
-
-
-# --- Wah gestures ----------------------------------------------------------
-
-async def _wah_moved(position):
-    """After a server-side wah gesture: the pedal is on, at `position`."""
-    amp.cache["wah_position"] = position
-    amp.cache["pedal_switch"] = 1
-    await amp.broadcast({"type": "parameter", "name": "wah_position", "value": position})
-    await amp.broadcast({"type": "parameter", "name": "pedal_switch", "value": 1})
-
-
-@router.post("/api/wah/rock")
-async def wah_rock(body: Rock = Rock()):
-    """Rock the treadle repeatedly - "4 intervals of 0 to 50 in 2.3 seconds".
-
-    Driven server-side for the whole gesture, like /api/wah/sweep: this is
-    hundreds of MIDI writes and stepping it from the browser would mean an
-    HTTP round-trip each.
-
-    The lock is held for the duration, so a long gesture blocks other amp
-    writes until it finishes. That is deliberate - interleaving another
-    parameter change mid-sweep is how the amp ends up in a state neither
-    side expects.
-    """
-    if not 1 <= body.intervals <= 32:
-        raise HTTPException(422, "intervals must be 1-32")
-    if not 0 <= body.low <= 100 or not 0 <= body.high <= 100:
-        raise HTTPException(422, "low and high must be 0-100")
-    if body.low == body.high:
-        raise HTTPException(422, "low and high must differ")
-    # An upper bound on total time: the lock is held throughout, and a
-    # mistyped 600 would wedge the amp for ten minutes.
-    if not 0.05 <= body.seconds <= 30:
-        raise HTTPException(422, "seconds must be 0.05-30")
-    if body.intervals * body.seconds > 120:
-        raise HTTPException(422, "total gesture must be under 120 s")
-
-    async with amp.lock:
-        try:
-            final = await amp.call(
-                controls.rock_wah,
-                body.intervals, body.low, body.high, body.seconds, body.bounce,
-            )
-        except KatanaError as exc:
-            raise HTTPException(503, str(exc))
-
-    await _wah_moved(final)
-    return {"position": final, "intervals": body.intervals,
-            "seconds": body.seconds, "total": round(body.intervals * body.seconds, 2)}
-
-
-@router.post("/api/wah/sweep")
-async def wah_sweep(body: Sweep = Sweep()):
-    """Sweep the wah treadle. One request - the amp is driven server-side.
-
-    Animating this from the browser would mean one HTTP round-trip per
-    step for a single MIDI byte, which floods both the port and the log.
-    """
-    async with amp.lock:
-        try:
-            final = await amp.call(
-                controls.sweep_wah, body.start, body.end, body.steps, body.delay
-            )
-        except KatanaError as exc:
-            raise HTTPException(503, str(exc))
-
-    await _wah_moved(final)
-    return {"position": final}
 
 
 # --- Footswitch messages ---------------------------------------------------

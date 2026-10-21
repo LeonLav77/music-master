@@ -179,15 +179,11 @@ also do pedal-bend, so it has to be pointed at wah first. Then the sound
 comes from *moving* the treadle:
 
 ```python
-from katana_amp.controls import rock_wah, sweep_wah
-
 set_parameter(Param.PEDAL_TYPE, 0)     # the pedal section does wah...
 set_parameter(Param.WAH_TYPE, 0)       # ...as a Cry Wah
 set_parameter(Param.PEDAL_SWITCH, 1)
 
-sweep_wah(0, 100)                      # one sweep
-rock_wah(4, 0, 50, 2.3)                # 4 rocks of 0-50, 2.3 s each
-set_parameter(Param.WAH_POSITION, 50)  # or park it at one position
+set_parameter(Param.WAH_POSITION, 80)  # move the treadle
 ```
 
 Voicings: Cry Wah, Vo Wah, Fat Wah, Light Wah, 7String Wah, Reso Wah.
@@ -315,7 +311,6 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `POST /api/tsl/{file}/{index}` | Load one patch into the amp |
 | `POST /api/refresh` | Re-read the amp (after someone turns a knob) |
 | `POST /api/patch/{number}` | Save the live sound into a stored channel |
-| `POST /api/wah/rock`, `/api/wah/sweep` | Move the wah treadle automatically |
 | `POST /api/cc/{control}` | Send a raw Control Change, as a footswitch would |
 | `WS /ws` | Live changes both ways: knob values and channel switches in, state pushes out |
 
