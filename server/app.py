@@ -8,16 +8,15 @@ One process, one port. The UI is same-origin with the API, so the page uses
 relative URLs and there is nothing to configure - which is what makes
 `--port` actually work, and what makes this a single systemd unit on a Pi.
 
-The parts stay separable in the code rather than in the deployment:
-`server.api` is the amp and knows nothing about a UI, `server.wifi` manages
-networks and knows nothing about the amp, and `server.ui` is a static mount
-that knows nothing about either. This module is the only place that knows
-about all three.
+The two parts stay separable in the code rather than in the deployment:
+`server.api` is the amp and knows nothing about a UI, and `server.ui` is a
+static mount that knows nothing about the amp. This module is the only
+place that knows about both.
 """
 
 from fastapi import FastAPI
 
-from server import api, ui, wifi
+from server import api, ui
 
 
 def create_app(serve_ui=True):
@@ -25,7 +24,6 @@ def create_app(serve_ui=True):
     app = FastAPI(title="Katana MkII", version="1.0", lifespan=api.lifespan)
 
     app.include_router(api.router)
-    app.include_router(wifi.router)
 
     # Last: the UI mounts at "/" and would otherwise shadow the API.
     # A missing web/ is a broken checkout, not something to paper over -

@@ -11,7 +11,7 @@ katana_amp/        the library - no printing, no prompts, reusable
   katana.py        protocol, address map, parameter tables
   controls.py      friendly helpers - set_gain(75), cry_wah(), ...
   tsl.py           read and load BOSS Tone Studio .tsl files
-server/            FastAPI app: amp API, wifi, and the UI on one port
+server/            FastAPI app: amp API and the UI on one port
 web/               the control surface - plain HTML, CSS and JS, no build step
 run                start the server
 requirements.txt   Python dependencies
@@ -380,7 +380,6 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `POST /api/patch/{number}` | Save the live sound into a stored channel |
 | `POST /api/wah/rock`, `/api/wah/sweep` | Move the wah treadle automatically |
 | `POST /api/cc/{control}` | Send a raw Control Change, as a footswitch would |
-| `/api/wifi/...` | Scan, join, list and forget wifi networks (via `nmcli`) |
 | `WS /ws` | Live state pushes, including `{"type":"amp","connected":false}` when the amp comes and goes |
 
 The schema drives the client, so there is no hardcoded list of fields on
