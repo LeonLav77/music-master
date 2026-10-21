@@ -18,6 +18,7 @@ server/            FastAPI app: amp API and the UI on one port
   amp.py           the link to the amp: lock, cache, reconnect loop, broadcast
   routes.py        the HTTP endpoints
   live.py          the WebSocket: knob changes and channel switches
+  meter.py         the input meter: guitar loudness from the amp's USB audio
 web/               the control surface - plain HTML, CSS and JS, no build step
 docs/
   CONTROLS.md      every parameter the amp exposes, with ranges

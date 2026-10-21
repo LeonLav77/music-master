@@ -1,15 +1,24 @@
+import contextlib
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from server import amp, live, routes
+from server import amp, live, meter, routes
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
-# amp.lifespan runs the loop that finds the amp while the server is up.
-app = FastAPI(title="Katana MkII", lifespan=amp.lifespan)
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    """What runs while the server is up: the loop that finds the amp, and
+    the input meter listening to its audio."""
+    async with amp.lifespan(app), meter.lifespan(app):
+        yield
+
+
+app = FastAPI(title="Katana MkII", lifespan=lifespan)
 app.include_router(routes.router)   # HTTP endpoints
 app.include_router(live.router)     # the WebSocket
 
