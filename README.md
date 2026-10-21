@@ -13,6 +13,9 @@ katana_amp/        the library - no printing, no prompts, reusable
   tsl.py           read and load BOSS Tone Studio .tsl files
 server/            FastAPI app: amp API and the UI on one port
 web/               the control surface - plain HTML, CSS and JS, no build step
+docs/
+  CONTROLS.md      every parameter the amp exposes, with ranges
+  TSL_FORMAT.md    the .tsl patch file format, reverse-engineered
 run                start the server
 requirements.txt   Python dependencies
 ```
