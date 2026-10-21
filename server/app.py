@@ -13,8 +13,8 @@ The halves stay separable in the code rather than in the deployment:
 `server.api` is the amp and knows nothing about a UI, `server.audio` plays
 backing tracks and knows nothing about MIDI, `server.wifi` manages networks
 and knows nothing about either, `server.ui` is a static mount
-and knows nothing about either. This module is the only place that knows
-about all three.
+and knows nothing about any of them. This module is the only place that
+knows about all four.
 """
 
 import contextlib

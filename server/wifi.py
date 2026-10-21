@@ -1,8 +1,8 @@
-"""Joining wifi networks from the control surface.
+"""Joining wifi networks over HTTP.
 
 The Pi travels, so the networks it should join are not knowable in advance.
-This is what makes that configurable without a keyboard: connect to the amp's
-own access point, open the page, and add the network you are standing in.
+This makes them configurable without a keyboard or SSH: reach the Pi any
+way you can (ethernet, a known network) and add the one you are standing in.
 
 Everything here shells out to nmcli rather than talking to NetworkManager
 over D-Bus. It is a handful of one-shot commands, and a subprocess is far
@@ -23,9 +23,8 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/wifi")
 
-# The AP's own profile, which must never be offered as something to forget:
-# deleting it from a phone connected through it would cut the branch off.
-AP_CONNECTION = "katana-ap"
+# The radio's interface. Named explicitly so nmcli never guesses.
+WIFI_DEVICE = "wlan0"
 
 # nmcli can block for a long time on a bad password or a busy radio. These
 # are per-command ceilings, chosen so a request fails rather than hangs.
@@ -84,11 +83,7 @@ def _split(line):
 
 @router.get("/scan")
 async def scan():
-    """Networks in range, strongest first.
-
-    The amp's own access point is filtered out: it is not something you join
-    from the page you are reading over it.
-    """
+    """Networks in range, strongest first."""
     out = await asyncio.to_thread(
         _nmcli, "-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE",
         "dev", "wifi", "list", "--rescan", "yes", timeout=SCAN_TIMEOUT,
@@ -142,8 +137,6 @@ async def saved():
         if len(parts) < 2 or "wireless" not in parts[1]:
             continue
         name = parts[0]
-        if name == AP_CONNECTION:
-            continue
         saved_networks.append({"name": name, "active": name in active})
 
     return {"saved": saved_networks}
@@ -163,10 +156,7 @@ async def join(body: Network):
     if body.hidden:
         args += ["hidden", "yes"]
 
-    # ifname: join on the radio's real interface, never on the AP's virtual
-    # one. Without this nmcli may pick ap0 and take the access point down -
-    # disconnecting the phone that asked for the change.
-    args += ["ifname", "wlan0"]
+    args += ["ifname", WIFI_DEVICE]
 
     await asyncio.to_thread(_nmcli, *args, timeout=CONNECT_TIMEOUT)
     return {"joined": body.ssid}
@@ -175,28 +165,17 @@ async def join(body: Network):
 @router.delete("/saved/{name}")
 async def forget(name: str):
     """Forget a saved network."""
-    if name == AP_CONNECTION:
-        raise HTTPException(
-            400, "that is the amp's own network - forgetting it would "
-                 "disconnect you"
-        )
     await asyncio.to_thread(_nmcli, "con", "delete", name)
     return {"forgot": name}
 
 
 @router.get("/status")
 async def status():
-    """What the Pi is connected to, and how to reach it.
-
-    Both halves matter: the access point is how you are probably reading
-    this, and the client connection is what gives it a route to the outside
-    world - and an address on the house network worth telling you about.
-    """
+    """Which wifi network the Pi is on, and its address there."""
     out = await asyncio.to_thread(
         _nmcli, "-t", "-f", "NAME,DEVICE,TYPE", "con", "show", "--active"
     )
 
-    ap, client = None, None
     for line in out.splitlines():
         if not line.strip():
             continue
@@ -204,16 +183,12 @@ async def status():
         if len(parts) < 3 or "wireless" not in parts[2]:
             continue
         name, device = parts[0], parts[1]
-        entry = {"name": name, "device": device}
         try:
             addr = await asyncio.to_thread(
                 _nmcli, "-g", "IP4.ADDRESS", "con", "show", name)
-            entry["address"] = addr.strip().split("/")[0].split("\n")[0] or None
+            address = addr.strip().split("/")[0].split("\n")[0] or None
         except HTTPException:
-            entry["address"] = None
-        if name == AP_CONNECTION:
-            ap = entry
-        else:
-            client = entry
+            address = None
+        return {"wifi": {"name": name, "device": device, "address": address}}
 
-    return {"ap": ap, "client": client}
+    return {"wifi": None}

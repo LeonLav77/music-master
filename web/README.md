@@ -29,8 +29,7 @@ placed before `js/app.js` in `index.html`.
 | --- | --- |
 | `index.html` | The whole surface. Alpine directives, no templating language. |
 | `app.css` | Design tokens, cabinet materials, layout. Hand-written. |
-| `fonts.css` + `fonts/` | Self-hosted, so the panel renders with no internet. |
-| `vendor/alpine.min.js` | Vendored, for the same reason. |
+| `vendor/alpine.min.js` | Vendored, so the panel works with no internet. |
 | `js/schema.js` | Parameter tables, fetched from `/api/parameters` at startup. |
 | `js/transport.js` | HTTP + WebSocket seam. Nothing else knows about the wire. |
 | `js/store.js` | The Alpine global store: amp state and the operations on it. |

@@ -1,6 +1,6 @@
 """Read BOSS Tone Studio .tsl patch files.
 
-    from tsl import load
+    from katana_amp.tsl import load
 
     bank = load("my tones.tsl")
     for patch in bank:
@@ -8,19 +8,10 @@
 
     bank[0].apply()         # load the first patch into the amp
 
-
 A .tsl file is JSON holding one or more patches, each a set of named byte
 blocks ("UserPatch%Patch_0", "UserPatch%Fx(1)", ...). Those blocks are the
 same bytes the amp keeps in memory, so a patch can be read here and sent
 straight to the amp.
-
-    from tsl import load
-
-    bank = load("my tones.tsl")
-    for patch in bank:
-        print(patch.name, patch.get("gain"))
-
-    bank[0].send()          # load the first patch into the amp
 """
 
 import json
@@ -252,7 +243,7 @@ def load(path):
 
 def describe(path):
     """Print a summary of every patch in a .tsl file."""
-    from katana import AMP_TYPES
+    from katana_amp.katana import AMP_TYPES
 
     for index, patch in enumerate(load(path), 1):
         amp_type = patch.get("amp_type")

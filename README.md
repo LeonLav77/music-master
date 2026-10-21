@@ -1,66 +1,49 @@
 # BOSS Katana MkII — USB MIDI Control
 
-Python control of a **BOSS Katana MkII 100W head** over USB MIDI SysEx,
-verified against real hardware.
-
-This is step one of a larger project, so the amp logic lives in a reusable
-package (`katana_amp/`) with no printing or prompts — the demo script is just
-one caller. A future Raspberry Pi touchscreen UI can import the same module.
+Control a **BOSS Katana MkII 100W head** over USB MIDI SysEx, verified
+against real hardware: a Python library for the amp, and a web control
+surface on top of it that runs on a Raspberry Pi and works from a phone.
 
 ## Layout
 
 ```
-katana_amp/        the library
+katana_amp/        the library - no printing, no prompts, reusable
   katana.py        protocol, address map, parameter tables
   controls.py      friendly helpers - set_gain(75), cry_wah(), ...
-  tsl.py           read and load Boss Tone Studio .tsl files
-server/
-  app.py           FastAPI HTTP + WebSocket API
-web/
-  index.html       test page - gain, volume, wah, channels
-patches/           .tsl patch files
-demo.py            command-line demo
-run                start the server (API, aux deck and UI on one port)
-deploy/            Raspberry Pi install - services, kiosk, see deploy/README.md
-vendor/            upstream reference project, for its protocol docs
+  tsl.py           read and load BOSS Tone Studio .tsl files
+  audio.py         backing tracks out the analog jack, into AUX IN
+server/            FastAPI app: amp API, aux deck, wifi, and the UI on one port
+web/               the control surface - plain HTML, CSS and JS, no build step
+scripts/
+  aux-play.sh      play one track into AUX IN from the terminal
+run                start the server
+requirements.txt   Python dependencies
 ```
+
+`patches/` (Tone Studio files) and `tracks/` (backing tracks) are created
+as you use them and are not part of the code.
 
 ## Setup
 
-Already done in this folder, but to recreate it:
-
 ```bash
 python3 -m venv venv
-./venv/bin/pip install python-rtmidi mido
+./venv/bin/pip install -r requirements.txt
 ```
 
-## Running the demo
+On a Pi, `python-rtmidi` compiles from source and needs
+`python3-dev build-essential libasound2-dev` installed first. Backing
+tracks also need `ffmpeg` and PipeWire (`pw-play`).
+
+## Running
 
 Amp powered on and connected by USB-B, then:
 
 ```bash
-./venv/bin/python demo.py
+./run
 ```
 
-This lists the MIDI ports, connects, prints the current patch and tone
-settings, then sweeps the **wah from 0 to 100 and back over 10 seconds**.
-
-It leaves the wah **on, at position 0**. Turn it off with
-`python -c "from katana_amp.controls import wah_off; wah_off()"`.
-
-**How to confirm the amp responds:** watch the Katana's panel or BOSS Tone
-Studio while the demo runs — the gain knob position jumps to maximum and then
-returns. If you leave the amp playing, you will hear it. The script also reads
-the value back from the amp and prints what the amp itself reports.
-
-Useful options:
-
-```bash
-./venv/bin/python demo.py --list                    # list ports and exit
-./venv/bin/python demo.py --read-only               # read settings, change nothing
-./venv/bin/python demo.py --param volume --value 80 # change a different parameter
-./venv/bin/python demo.py --port "KATANA:KATANA MIDI 1 24:0"
-```
+and open `http://<this machine>:8000`. Or drive the amp from Python
+directly - see below.
 
 ### MIDI ports
 
@@ -379,10 +362,10 @@ worked out, so roughly half those bytes land in the wrong place. Use
 ./run
 ```
 
-Then open **http://localhost:8000** for the test page — gain and volume
-sliders, wah pedal with a sweep button, and the eight channel buttons. It
-follows the amp live over the WebSocket, so changing a channel moves the
-sliders.
+Then open **http://localhost:8000** for the control surface — amp knobs,
+effect pedals, graphic EQ, wah treadle, channels and the backing-track
+deck. It follows the amp live over the WebSocket, so changing a channel
+moves the knobs.
 
 Serves on `0.0.0.0:8000` so another machine can reach it (use the Pi's
 address instead of localhost). Interactive API docs at `/docs`.
@@ -399,6 +382,11 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `GET /api/tsl` | Patch files in `patches/` |
 | `POST /api/tsl/{file}/{index}` | Load one patch into the amp |
 | `POST /api/refresh` | Re-read the amp (after someone turns a knob) |
+| `POST /api/patch/{number}` | Save the live sound into a stored channel |
+| `POST /api/wah/rock`, `/api/wah/sweep` | Move the wah treadle automatically |
+| `POST /api/cc/{control}` | Send a raw Control Change, as a footswitch would |
+| `/api/audio/...` | Backing tracks: list, play, pause, seek, volume, fetch from a URL |
+| `/api/wifi/...` | Scan, join, list and forget wifi networks (via `nmcli`) |
 | `WS /ws` | Live state pushes, including `{"type":"amp","connected":false}` when the amp comes and goes |
 
 The schema drives the client, so there is no hardcoded list of fields on
@@ -484,7 +472,7 @@ loading Octave.
 ## Sources
 
 - [snhirsch/katana-midi-bridge](https://github.com/snhirsch/katana-midi-bridge)
-  — first-generation protocol groundwork (vendored in `vendor/`).
+  — first-generation protocol groundwork.
 - [Katana MkII MIDI Address Map, VGuitarForums](https://www.vguitarforums.com/smf/index.php?topic=27749.0)
   — the MkII address map. Its listed identity reply matches this amp exactly.
 - [katana-dev/docs](https://github.com/katana-dev/docs) — the 28 amp type table.
