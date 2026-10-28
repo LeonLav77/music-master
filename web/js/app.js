@@ -4,6 +4,7 @@
 // this file, once everything is registered on alpine:init.
 
 import { createKatanaStore } from "./store.js";
+import { createPracticeStore } from "./practice.js";
 import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
@@ -32,6 +33,8 @@ const TILE_COLOR = {
 document.addEventListener("alpine:init", () => {
   Alpine.store("katana", createKatanaStore());
   Alpine.store("katana").init();
+  Alpine.store("practice", createPracticeStore());
+  Alpine.store("practice").init();
 
   Alpine.data("knob", knob);
   Alpine.data("ampDial", ampDial);
@@ -41,6 +44,12 @@ document.addEventListener("alpine:init", () => {
 
   /** The whole desk: layout-level state only. */
   Alpine.data("desk", () => ({
+    // "amp" or "practice". In the URL (#practice), so it can be bookmarked,
+    // and remembered, so a reload stays on the same tab.
+    tab: (() => {
+      if (location.hash === "#practice" || location.hash === "#amp") return location.hash.slice(1);
+      try { return localStorage.getItem("katana.tab") === "practice" ? "practice" : "amp"; } catch { return "amp"; }
+    })(),
     openBlock: null,
     channels: CHANNELS,
     footswitches: FOOTSWITCHES,
@@ -55,6 +64,12 @@ document.addEventListener("alpine:init", () => {
     titles: BLOCK_TITLES,
 
     get amp() { return Alpine.store("katana"); },
+    get practice() { return Alpine.store("practice"); },
+    showTab(name) {
+      this.tab = name;
+      history.replaceState(null, "", `#${name}`);
+      try { localStorage.setItem("katana.tab", name); } catch {}
+    },
     get blocks() { return buildBlocks(this.amp); },
     get glowing() { return this.amp.bool("bright") || this.amp.dirty; },
     tileColor(label) { return TILE_COLOR[label] ?? "coral"; },

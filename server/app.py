@@ -1,14 +1,22 @@
+import contextlib
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from server import amp, routes, websocket
+from server import amp, audio, routes, websocket
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
-app = FastAPI(title="Katana MkII", lifespan=amp.lifespan)
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    async with amp.lifespan(app), audio.lifespan(app):
+        yield
+
+
+app = FastAPI(title="Katana MkII", lifespan=lifespan)
 app.include_router(routes.router)   # HTTP endpoints
 app.include_router(websocket.router)  # the WebSocket
 

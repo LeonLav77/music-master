@@ -13,7 +13,7 @@ from katana_amp import katana
 from katana_amp import tsl
 from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
-from server import amp, browsers
+from server import amp, audio, browsers
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +78,20 @@ async def save_patch(number: int):
             raise HTTPException(503, str(exc))
     await browsers.broadcast({"type": "patches", "names": names})
     return {"patch": number, "bytes": written, "names": names}
+
+
+# --- Backing tracks and metronome ------------------------------------------
+
+@router.get("/api/tracks")
+async def tracks():
+    """The audio files in tracks/, newest first, and which are in memory."""
+    return audio.tracks_message()["tracks"]
+
+
+@router.get("/api/playback")
+async def playback():
+    """What the metronome and the track are doing right now."""
+    return audio.state_message()
 
 
 # --- Footswitch messages ---------------------------------------------------
