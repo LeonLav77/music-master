@@ -72,8 +72,19 @@
       </div>
     </section>
 
+    <!-- ---- tabs: the amp, and practice (metronome + backing tracks) ----
+         Hidden, not removed, when not shown: nothing reconnects or resets,
+         and a song keeps playing while you tweak the amp. -->
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" class="seg" :class="tab === 'amp' && 'active'" :aria-pressed="tab === 'amp'" @click="showTab('amp')">Amp</button>
+      <button type="button" class="seg" :class="tab === 'practice' && 'active'" :aria-pressed="tab === 'practice'" @click="showTab('practice')">
+        Practice
+        <span class="tab-dot" x-show="practice.metronome.running || practice.track?.playing" aria-hidden="true"></span>
+      </button>
+    </nav>
+
     <!-- ---- channel rail ---- -->
-    <div style="flex-shrink:0" x-data="channelRail">
+    <div style="flex-shrink:0" x-data="channelRail" x-show="tab === 'amp'">
       <div class="rail">
         <template x-for="channel in channels" :key="channel.id">
           <button
@@ -109,7 +120,7 @@
     </div>
 
     <!-- ---- cabinet body ---- -->
-    <section class="body-grid">
+    <section class="body-grid" x-show="tab === 'amp'">
 
       <!-- amp control plate -->
       <div class="plate amp-plate">
@@ -341,10 +352,164 @@
         </div>
       </div>
     </section>
+
+    <!-- ---- practice: metronome and backing tracks ---- -->
+    <section class="practice" x-show="tab === 'practice'">
+      <p class="practice-banner" x-show="!practice.available">
+        No audio output: the server could not open the Pi's headphone jack.
+      </p>
+
+      <!-- metronome -->
+      <div class="practice-plate amp-plate">
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
+
+        <h2 class="practice-title engrave">Metronome</h2>
+
+        <div class="bpm">
+          <button type="button" class="chip" @click="practice.setBpm(practice.metronome.bpm - 5)">−5</button>
+          <button type="button" class="chip" @click="practice.setBpm(practice.metronome.bpm - 1)">−1</button>
+          <div class="bpm-readout">
+            <span x-text="Math.round(practice.metronome.bpm)"></span>
+            <small>bpm</small>
+          </div>
+          <button type="button" class="chip" @click="practice.setBpm(practice.metronome.bpm + 1)">+1</button>
+          <button type="button" class="chip" @click="practice.setBpm(practice.metronome.bpm + 5)">+5</button>
+        </div>
+        <input type="range" class="slider" min="40" max="240" step="1" aria-label="Tempo"
+               :value="practice.metronome.bpm"
+               @input="practice.setBpm($event.target.valueAsNumber)" />
+
+        <div class="field">
+          <span class="field-label">Beats per bar</span>
+          <div class="segmented">
+            <template x-for="beats in [2, 3, 4, 6]" :key="beats">
+              <button type="button" class="seg" :class="practice.metronome.beats_per_bar === beats && 'active'"
+                      @click="practice.setMetronome({ beats_per_bar: beats })" x-text="beats"></button>
+            </template>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Volume <span x-text="Math.round(practice.metronome.volume * 100) + '%'"></span></span>
+          <input type="range" class="slider" min="0" max="1" step="0.05" aria-label="Metronome volume"
+                 :value="practice.metronome.volume"
+                 @input="practice.setMetronome({ volume: $event.target.valueAsNumber })" />
+        </div>
+
+        <div class="practice-actions">
+          <button type="button" class="toggle-btn" :class="practice.metronome.running && !practice.countingIn && 'on'"
+                  :disabled="!practice.available"
+                  @click="practice.toggleMetronome()"
+                  x-text="practice.metronome.running && !practice.countingIn ? 'stop' : 'start'"></button>
+          <button type="button" class="toggle-btn" @click="practice.tapMetronome()">tap</button>
+        </div>
+      </div>
+
+      <!-- backing tracks -->
+      <div class="practice-plate amp-plate">
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
+
+        <h2 class="practice-title engrave">Backing tracks</h2>
+
+        <p class="practice-empty" x-show="!practice.tracks.length">
+          No songs yet. Copy audio files into <code>tracks/</code> on the Pi.
+        </p>
+
+        <div class="track-list">
+          <template x-for="entry in practice.tracks" :key="entry.name">
+            <button type="button" class="rail-btn track-row" :class="practice.selected === entry.name && 'active'"
+                    @click="practice.select(entry.name)">
+              <span class="rail-name" x-text="practice.displayName(entry.name)"></span>
+              <span class="rail-bank"
+                    x-text="practice.track?.name === entry.name && practice.track.playing ? 'playing' : (entry.ready ? 'ready' : 'loading…')"></span>
+            </button>
+          </template>
+        </div>
+
+        <template x-if="practice.selected">
+          <div class="track-panel">
+            <div class="track-now">
+              <span class="track-title" x-text="practice.displayName(practice.selected)"></span>
+              <span class="track-status" x-text="practice.status"></span>
+            </div>
+
+            <div x-data="{ dragging: false, draft: 0 }">
+              <input type="range" class="slider" min="0" step="0.1" aria-label="Position in song"
+                     :max="practice.duration || 1"
+                     :disabled="!practice.isCurrent"
+                     :value="dragging ? draft : practice.elapsed"
+                     @pointerdown="dragging = true; draft = practice.elapsed"
+                     @input="draft = $event.target.valueAsNumber"
+                     @change="practice.seek(draft); dragging = false" />
+              <div class="track-times">
+                <span x-text="practice.clock(dragging ? draft : practice.elapsed)"></span>
+                <span x-text="practice.isCurrent ? practice.clock(practice.duration) : '–:––'"></span>
+              </div>
+            </div>
+
+            <div class="practice-actions">
+              <template x-if="practice.isCurrent && practice.track.playing">
+                <button type="button" class="toggle-btn on" @click="practice.pause()">pause</button>
+              </template>
+              <template x-if="practice.isCurrent && !practice.track.playing && practice.track.elapsed > 0">
+                <button type="button" class="toggle-btn" @click="practice.resume()">resume</button>
+              </template>
+              <button type="button" class="toggle-btn" :disabled="!practice.available || practice.loading !== null"
+                      @click="practice.play()"
+                      x-text="practice.isCurrent && (practice.track.playing || practice.track.elapsed > 0) ? 'restart' : 'play'"></button>
+              <button type="button" class="toggle-btn" :disabled="!practice.isCurrent" @click="practice.stop()">stop</button>
+            </div>
+
+            <div class="song-settings">
+              <div class="field">
+                <span class="field-label">Count-in beats</span>
+                <div class="segmented">
+                  <template x-for="beats in [0, 2, 4, 8]" :key="beats">
+                    <button type="button" class="seg" :class="practice.song.countIn === beats && 'active'"
+                            @click="practice.updateSong({ countIn: beats })" x-text="beats === 0 ? 'off' : beats"></button>
+                  </template>
+                </div>
+              </div>
+              <div class="song-numbers">
+                <label class="field">
+                  <span class="field-label">Song BPM</span>
+                  <span class="number-row">
+                    <input type="number" class="number-input" min="20" max="400" step="1"
+                           :value="practice.song.bpm"
+                           @change="practice.updateSong({ bpm: Math.min(Math.max($event.target.valueAsNumber || 120, 20), 400) })" />
+                    <button type="button" class="chip" @click="practice.tapSong()">tap</button>
+                  </span>
+                </label>
+                <label class="field">
+                  <span class="field-label">Beat 1 at (s)</span>
+                  <input type="number" class="number-input" min="0" max="60" step="0.01"
+                         :value="practice.song.firstBeat"
+                         @change="practice.updateSong({ firstBeat: Math.min(Math.max($event.target.valueAsNumber || 0, 0), 60) })" />
+                </label>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Song volume <span x-text="Math.round((practice.track?.volume ?? 1) * 100) + '%'"></span></span>
+              <input type="range" class="slider" min="0" max="1" step="0.05" aria-label="Song volume"
+                     :disabled="!practice.track"
+                     :value="practice.track?.volume ?? 1"
+                     @input="practice.setTrackVolume($event.target.valueAsNumber)" />
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
   </div>
 
   <!-- ---- EQ dock: anchored bottom-right, clear of the footswitch row ---- -->
-  <div class="eq-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad">
+  <div class="eq-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad" x-show="tab === 'amp'">
     <div class="eq-dock" :class="!expanded && 'collapsed'">
       <div class="eq-head">
         <button type="button" class="eq-toggle" @click="toggleExpanded()" :aria-expanded="expanded">

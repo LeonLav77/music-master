@@ -138,6 +138,17 @@ export const transport = {
     return request("/api/refresh", { method: "POST" });
   },
 
+  /** Metronome settings and start/stop - any of bpm, beats_per_bar,
+   *  volume, running. */
+  metronome(fields) {
+    sendMessage({ type: "metronome", ...fields });
+  },
+
+  /** A backing-track action: play, pause, resume, stop, seek, volume. */
+  track(action, fields = {}) {
+    sendMessage({ type: "track", action, ...fields });
+  },
+
   /** Channel list and the names of the stored patches. */
   async channels() {
     return request("/api/channels");

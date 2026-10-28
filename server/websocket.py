@@ -13,7 +13,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
-from server import amp, browsers
+from playback import PlaybackError, TrackError
+from server import amp, audio, browsers
 
 router = APIRouter()
 
@@ -76,6 +77,8 @@ async def websocket(client: WebSocket):
             json.dumps({"type": "amp", "connected": amp.is_online()})
         )
         await client.send_text(json.dumps(amp.state_message()))
+        await client.send_text(json.dumps(audio.state_message()))
+        await client.send_text(json.dumps(audio.tracks_message()))
 
         while True:
             raw = await client.receive_text()
@@ -92,6 +95,15 @@ async def websocket(client: WebSocket):
                 try:
                     await _select_channel(message["name"])
                 except (KatanaError, KeyError) as exc:
+                    await client.send_text(
+                        json.dumps({"type": "error", "detail": str(exc)})
+                    )
+                continue
+
+            if message_type in ("metronome", "track"):
+                try:
+                    await audio.handle(message)
+                except (PlaybackError, TrackError, KeyError, TypeError, ValueError) as exc:
                     await client.send_text(
                         json.dumps({"type": "error", "detail": str(exc)})
                     )
