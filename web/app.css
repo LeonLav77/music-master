@@ -762,3 +762,45 @@ input {
 }
 .number-input:focus { outline: 1px solid var(--ring); border-color: var(--ring); }
 .practice .field { margin-bottom: 0; }
+
+/* ---- adding and deleting songs ---- */
+/* Hidden but still focusable and clickable through its <label>. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.practice-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.practice-head .chip { cursor: pointer; }
+.practice-head .chip:focus-within { outline: 1px solid var(--ring); }
+.practice-plate.dropping {
+  outline: 2px dashed var(--steel); outline-offset: -6px;
+  box-shadow: 0 0 24px color-mix(in oklab, var(--steel) 40%, transparent);
+}
+
+.upload-row {
+  display: flex; flex-direction: column; gap: 0.375rem;
+  border: 1px solid var(--hairline); border-radius: 4px;
+  background: var(--panel); padding: 0.5rem 0.625rem;
+}
+.upload-row.failed { border-color: var(--ember); }
+.upload-text { display: flex; justify-content: space-between; gap: 0.75rem; min-width: 0; }
+.upload-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.8rem;
+}
+.upload-state {
+  flex-shrink: 0; font-family: var(--font-mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 0.2em; color: var(--steel);
+}
+.upload-row.failed .upload-state { color: var(--ember); }
+.upload-bar { height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.upload-bar > div { height: 100%; background: var(--steel); transition: width 150ms linear; }
+.upload-row.failed .upload-bar > div { background: var(--ember); }
+.upload-error { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+
+.track-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.375rem; }
+.track-delete {
+  width: 2.25rem; border-radius: 4px; border: 1px solid var(--hairline);
+  background: var(--panel); color: var(--muted-foreground); font-size: 1.1rem; line-height: 1;
+}
+.track-delete:hover { border-color: var(--ember); color: var(--ember); }

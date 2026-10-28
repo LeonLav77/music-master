@@ -4,20 +4,24 @@ Live changes - knobs, channel switches - go over the WebSocket instead
 (websocket.py). Everything here goes through the shared amp link in amp.py.
 """
 
+import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from katana_amp import katana
 from katana_amp import tsl
 from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
+from playback import TrackError
+from playback.library import check_name
 from server import amp, audio, browsers
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
 PATCH_DIR = ROOT / "patches"
+MAX_UPLOAD = 200 * 1024 * 1024   # bytes; a long WAV is ~100 MB
 
 router = APIRouter()
 
@@ -86,6 +90,54 @@ async def save_patch(number: int):
 async def tracks():
     """The audio files in tracks/, newest first, and which are in memory."""
     return audio.tracks_message()["tracks"]
+
+
+@router.put("/api/tracks/{filename}")
+async def upload_track(filename: str, request: Request):
+    """Add a song: the request body is the file itself.
+
+    Answers once the song is decoded and in memory, so it plays instantly -
+    and a file that turns out not to be audio is refused and removed.
+    """
+    try:
+        check_name(filename)
+    except TrackError as exc:
+        raise HTTPException(422, str(exc))
+
+    library = audio.library
+    temporary = library.upload_path()
+    size = 0
+    try:
+        with open(temporary, "wb") as file:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, f"Songs can be at most {MAX_UPLOAD // 2**20} MB")
+                file.write(chunk)
+        if size == 0:
+            raise HTTPException(422, "The file is empty")
+        name, decoding = library.add(temporary, filename)
+    finally:
+        # Gone already if add() moved it in; otherwise an aborted upload.
+        temporary.unlink(missing_ok=True)
+
+    try:
+        await asyncio.wrap_future(decoding)
+    except TrackError as exc:
+        library.remove(name)
+        audio.log.warning("Upload %s refused: %s", filename, exc)
+        raise HTTPException(422, f"{filename} is not a playable audio file")
+    return {"name": name, "bytes": size}
+
+
+@router.delete("/api/tracks/{filename}")
+async def delete_track(filename: str):
+    """Delete a song from tracks/. Stops it first if it is playing."""
+    try:
+        audio.remove(filename)
+    except TrackError as exc:
+        raise HTTPException(404, str(exc))
+    return {"deleted": filename}
 
 
 @router.get("/api/playback")

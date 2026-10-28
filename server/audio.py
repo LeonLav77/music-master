@@ -134,6 +134,14 @@ async def _track(message):
         raise ValueError(f"Unknown track action {action!r}")
 
 
+def remove(name):
+    """Delete a song, stopping it first if it is the one playing."""
+    if player is not None and player.track is not None and player.track.name == name:
+        player.pause()
+        player.stop_metronome()
+    library.remove(name)
+
+
 # --- The watcher and the lifespan ----------------------------------------
 
 def _without_elapsed(state):

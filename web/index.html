@@ -408,29 +408,73 @@
         </div>
       </div>
 
-      <!-- backing tracks -->
-      <div class="practice-plate amp-plate">
+      <!-- backing tracks: also the drop zone for new songs. dragenter and
+           dragleave fire for every child crossed, so count them. -->
+      <div class="practice-plate amp-plate" x-data="{ dragDepth: 0 }"
+           :class="dragDepth > 0 && 'dropping'"
+           @dragenter.prevent="dragDepth++"
+           @dragover.prevent
+           @dragleave="dragDepth = Math.max(dragDepth - 1, 0)"
+           @drop.prevent="dragDepth = 0; practice.upload($event.dataTransfer.files)">
         <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
         <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
         <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
         <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
 
-        <h2 class="practice-title engrave">Backing tracks</h2>
+        <div class="practice-head">
+          <h2 class="practice-title engrave">Backing tracks</h2>
+          <!-- The way in on a phone, which has no drag and drop. -->
+          <label class="chip">
+            add song
+            <input type="file" class="visually-hidden" multiple
+                   accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,audio/*"
+                   @change="practice.upload($event.target.files); $event.target.value = ''" />
+          </label>
+        </div>
 
-        <p class="practice-empty" x-show="!practice.tracks.length">
-          No songs yet. Copy audio files into <code>tracks/</code> on the Pi.
+        <p class="practice-empty" x-show="!practice.tracks.length && !practice.uploads.length">
+          No songs yet. Drop audio files here, or tap <em>add song</em>.
         </p>
+
+        <template x-for="upload in practice.uploads" :key="upload.id">
+          <div class="upload-row" :class="upload.error && 'failed'">
+            <div class="upload-text">
+              <span class="upload-name" x-text="practice.displayName(upload.name)"></span>
+              <span class="upload-state"
+                    x-text="upload.error ? 'failed' : (upload.progress < 1 ? Math.round(upload.progress * 100) + '%' : 'preparing…')"></span>
+            </div>
+            <div class="upload-bar"><div :style="`width:${upload.progress * 100}%`"></div></div>
+            <p class="upload-error" x-show="upload.error" x-text="upload.error"></p>
+          </div>
+        </template>
 
         <div class="track-list">
           <template x-for="entry in practice.tracks" :key="entry.name">
-            <button type="button" class="rail-btn track-row" :class="practice.selected === entry.name && 'active'"
-                    @click="practice.select(entry.name)">
-              <span class="rail-name" x-text="practice.displayName(entry.name)"></span>
-              <span class="rail-bank"
-                    x-text="practice.track?.name === entry.name && practice.track.playing ? 'playing' : (entry.ready ? 'ready' : 'loading…')"></span>
-            </button>
+            <div class="track-row-wrap">
+              <button type="button" class="rail-btn track-row" :class="practice.selected === entry.name && 'active'"
+                      @click="practice.select(entry.name)">
+                <span class="rail-name" x-text="practice.displayName(entry.name)"></span>
+                <span class="rail-bank"
+                      x-text="practice.track?.name === entry.name && practice.track.playing ? 'playing' : (entry.ready ? 'ready' : 'loading…')"></span>
+              </button>
+              <button type="button" class="track-delete" :aria-label="'Delete ' + practice.displayName(entry.name)"
+                      @click="practice.askDelete(entry.name)">×</button>
+            </div>
           </template>
         </div>
+
+        <template x-if="practice.pendingDelete">
+          <div class="overlay center" @click.self="practice.pendingDelete = null">
+            <div class="confirm" role="alertdialog" aria-modal="true">
+              <h2>Delete <span x-text="practice.displayName(practice.pendingDelete)"></span>?</h2>
+              <p>This removes the file from the Pi. Its count-in settings in this browser are kept, in case you add it again.</p>
+              <div class="confirm-actions">
+                <button type="button" class="btn" @click="practice.pendingDelete = null">Cancel</button>
+                <button type="button" class="btn btn-danger" @click="practice.confirmDelete()">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <template x-if="practice.selected">
           <div class="track-panel">

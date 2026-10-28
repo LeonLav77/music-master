@@ -54,9 +54,12 @@ export function createPracticeStore() {
     track: null,          // { name, playing, elapsed, duration, volume } from the server
     tracks: [],           // [{ name, ready }], newest first
     selected: null,
+    uploads: [],          // [{ id, name, progress, error }] in this browser
+    pendingDelete: null,  // the song waiting for "are you sure?"
     receivedAt: 0,        // when track.elapsed was measured
     now: 0,               // ticks while the page is open, so the progress bar moves
 
+    _selectWhenListed: null,
     _settings: loadSettings(),
     _editedAt: {},
     _taps: [],
@@ -186,6 +189,54 @@ export function createPracticeStore() {
       transport.track("volume", { value });
     },
 
+    // ---- adding and deleting songs ----
+    /** Upload dropped or picked files, one at a time - the Pi decodes each
+     *  as it lands, and one at a time keeps that quick. */
+    async upload(fileList) {
+      const files = [...fileList];
+      const entries = files.map((file, index) => ({
+        id: `${Date.now()}-${index}`, name: file.name, progress: 0, error: null,
+      }));
+      this.uploads = [...this.uploads, ...entries];
+      for (const [index, file] of files.entries()) {
+        const entry = this.uploads.find((upload) => upload.id === entries[index].id);
+        try {
+          const result = await transport.uploadTrack(file, (progress) => {
+            entry.progress = progress;
+          });
+          this.uploads = this.uploads.filter((upload) => upload.id !== entry.id);
+          this._selectSoon(result.name);
+        } catch (error) {
+          entry.error = error.message;
+          setTimeout(() => {
+            this.uploads = this.uploads.filter((upload) => upload.id !== entry.id);
+          }, 8000);
+        }
+      }
+    },
+
+    /** Select `name` now if the list has it, or as soon as it does - the
+     *  server lists the folder once a second. */
+    _selectSoon(name) {
+      if (this.tracks.some((entry) => entry.name === name)) this.selected = name;
+      else this._selectWhenListed = name;
+    },
+
+    askDelete(name) {
+      this.pendingDelete = name;
+    },
+
+    async confirmDelete() {
+      const name = this.pendingDelete;
+      this.pendingDelete = null;
+      try {
+        await transport.deleteTrack(name);
+        if (this.selected === name) this.selected = null;
+      } catch (error) {
+        console.error("[practice] delete failed", error);
+      }
+    },
+
     // ---- from the server ----
     _recent(key) {
       return performance.now() - (this._editedAt[key] ?? -Infinity) < EDIT_GRACE_MS;
@@ -212,7 +263,15 @@ export function createPracticeStore() {
         } else if (message.type === "tracks") {
           this.tracks = message.tracks;
           const names = message.tracks.map((entry) => entry.name);
-          if (!names.includes(this.selected)) this.selected = this.track?.name ?? names[0] ?? null;
+          if (this._selectWhenListed && names.includes(this._selectWhenListed)) {
+            this.selected = this._selectWhenListed;
+            this._selectWhenListed = null;
+          } else if (!names.includes(this.selected)) {
+            // Gone (deleted) or nothing picked yet: the playing song if it
+            // is still here, else the newest.
+            const playing = this.track?.name;
+            this.selected = names.includes(playing) ? playing : names[0] ?? null;
+          }
         }
       });
       setInterval(() => {

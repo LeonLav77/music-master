@@ -149,6 +149,32 @@ export const transport = {
     sendMessage({ type: "track", action, ...fields });
   },
 
+  /** Upload a song file. Resolves with { name } once the server has it
+   *  decoded and ready. XMLHttpRequest, not fetch: fetch cannot report
+   *  upload progress. `onProgress` gets 0..1. */
+  uploadTrack(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `${BASE}/api/tracks/${encodeURIComponent(file.name)}`);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded / event.total);
+      };
+      xhr.upload.onload = () => onProgress(1);
+      xhr.onload = () => {
+        let body = null;
+        try { body = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+        else reject(new Error(body?.detail ?? `upload failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("upload failed: cannot reach the server"));
+      xhr.send(file);
+    });
+  },
+
+  async deleteTrack(name) {
+    return request(`/api/tracks/${encodeURIComponent(name)}`, { method: "DELETE" });
+  },
+
   /** Channel list and the names of the stored patches. */
   async channels() {
     return request("/api/channels");
