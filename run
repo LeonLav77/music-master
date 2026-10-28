@@ -1,56 +1,6 @@
 #!/usr/bin/env bash
-# Start the control surface.
-#
-#   ./run                 API and UI on :8000
-#   ./run --port 9000     both, somewhere else
-#   ./run --no-ui         API only, no control surface
-#
-# One process serving both halves on one port. The page is same-origin with
-# the API, so it just uses relative URLs - which is why --port works here
-# and used to be a trap.
-#
+# Start the server: the amp API and the web page on port 8000.
 # Ctrl-C stops it.
 
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-PORT=8000
-HOST=0.0.0.0
-ARGS=()
-
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --port)     PORT="${2:?--port needs a number}"; shift 2 ;;
-    --host)     HOST="${2:?--host needs an address}"; shift 2 ;;
-    --no-ui)    ARGS+=(--no-ui); shift ;;
-    -h|--help)  sed -n '2,12p' "$0" | sed 's/^# \?//'; exit 0 ;;
-    # The UI no longer has a port of its own. Saying so beats starting on a
-    # port the caller did not ask for and letting them find out later.
-    --ui-port|--api-port)
-      echo "$1 is gone: the UI and API share one port now - use --port" >&2
-      exit 2 ;;
-    *) echo "unknown option: $1" >&2; exit 2 ;;
-  esac
-done
-
-[ -x "$ROOT/venv/bin/python" ] || {
-  echo "no venv - run: python3 -m venv venv && ./venv/bin/pip install -r requirements.txt" >&2
-  exit 1
-}
-
-# Fail with a clear message rather than a stack trace half a second in.
-if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
-  exec 3<&- 3>&-
-  echo "port $PORT is already in use - stop what's on it first" >&2
-  exit 1
-fi
-
-echo "UI    http://localhost:$PORT      (docs at /docs)"
-
-# The LAN address is the one that matters for a phone.
-lan=$(hostname -I 2>/dev/null | awk '{print $1}')
-[ -n "$lan" ] && echo "LAN   http://$lan:$PORT"
-echo
-
-exec "$ROOT/venv/bin/python" -m server.app \
-  --host "$HOST" --port "$PORT" "${ARGS[@]+"${ARGS[@]}"}"
+cd "$(dirname "$0")"
+exec ./venv/bin/python -m server.app

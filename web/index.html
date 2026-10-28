@@ -5,10 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Katana MkII Control Surface</title>
 <link rel="icon" href="favicon.ico" type="image/x-icon" />
-<link rel="stylesheet" href="fonts.css" />
 <link rel="stylesheet" href="app.css" />
+<!-- app.js loads Alpine itself, once the parameter schema has arrived. -->
 <script type="module" src="js/app.js"></script>
-<script defer src="vendor/alpine.min.js"></script>
 </head>
 
 <body>
@@ -17,15 +16,15 @@
   <!-- Slow amp operation: several seconds of MIDI where nothing visibly
        changes and then everything changes at once. Without this the
        surface just looks frozen. -->
-  <div class="busybar" :class="k.busy && 'show'" aria-live="polite">
+  <div class="busybar" :class="amp.busy && 'show'" aria-live="polite">
     <div class="busybar-track"><div class="busybar-fill"></div></div>
-    <template x-if="k.busy">
-      <div class="busybar-label-wrap"><span class="busybar-label" x-text="k.busy"></span></div>
+    <template x-if="amp.busy">
+      <div class="busybar-label-wrap"><span class="busybar-label" x-text="amp.busy"></span></div>
     </template>
   </div>
 
-  <main class="scene amp-scene">
-  <div class="cabinet amp-tolex amp-tilt">
+  <main class="scene">
+  <div class="cabinet amp-tolex">
     <span aria-hidden="true" class="trim trim-top chrome-edge"></span>
     <span aria-hidden="true" class="trim trim-bottom chrome-edge"></span>
 
@@ -50,44 +49,23 @@
       <div class="divider-v"></div>
 
       <div class="status">
-        <!-- The deck is a separate page: a different job, and the amp
-             surface is already full at the sizes this runs on. -->
-        <nav class="pagetabs" aria-label="Sections">
-          <button type="button" class="pagetab" :class="page === 'amp' && 'active'"
-                  :aria-current="page === 'amp' ? 'page' : false"
-                  @click="page = 'amp'">amp</button>
-          <button type="button" class="pagetab" :class="page === 'deck' && 'active'"
-                  :aria-current="page === 'deck' ? 'page' : false"
-                  @click="page = 'deck'">deck</button>
-        </nav>
-
-        <span class="patch-name engrave" x-show="page === 'amp'">
-          <span x-text="k.channelNames[k.channel]"></span>
-          <span class="edited" x-show="k.dirty"> · edited</span>
+        <span class="patch-name engrave">
+          <span x-text="amp.channelNames[amp.channel]"></span>
+          <span class="edited" x-show="amp.dirty"> · edited</span>
         </span>
 
-        <span class="patch-name engrave" x-show="page === 'deck'"
-              :class="d.error && 'edited'" x-text="d.label"></span>
-
         <div class="status-actions">
-          <!-- Playback state, on both pages: a backing track running while
-               you are on the amp page still needs to be visible. -->
-          <span class="conn" x-show="d.active" title="A backing track is playing into AUX IN">
-            <span aria-hidden="true" class="dot dot-amber"></span>
-            <span class="conn-label engrave" x-text="d.counting ? 'count-in' : d.paused ? 'paused' : 'aux'"></span>
-          </span>
-
           <!-- Whether the amp is actually reachable. Without this a
                disconnected surface looks identical to a working one. -->
-          <span class="conn" :title="k.connection === 'open' ? (k.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
-            <span aria-hidden="true" class="dot" :class="'dot-' + k.statusKind"></span>
-            <span class="conn-label engrave" x-text="k.statusLabel"></span>
+          <span class="conn" :title="amp.connection === 'open' ? (amp.ampConnected ? 'Amp connected' : 'Server up, amp not responding - retrying') : 'Cannot reach the server'">
+            <span aria-hidden="true" class="dot" :class="'dot-' + amp.statusKind"></span>
+            <span class="conn-label engrave" x-text="amp.statusLabel"></span>
           </span>
 
-          <span class="sync-label engrave" x-show="page === 'amp'" x-text="k.syncLabel"></span>
+          <span class="sync-label engrave" x-text="amp.syncLabel"></span>
 
-          <button type="button" class="chip" x-show="page === 'amp'" @click="resync()">
-            <svg :class="k.syncing && 'spin'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+          <button type="button" class="chip" @click="resync()">
+            <svg :class="amp.syncing && 'spin'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
             resync
           </button>
         </div>
@@ -95,21 +73,21 @@
     </section>
 
     <!-- ---- channel rail ---- -->
-    <div style="flex-shrink:0" x-show="page === 'amp'" x-data="channelRail">
+    <div style="flex-shrink:0" x-data="channelRail">
       <div class="rail">
-        <template x-for="c in channels" :key="c.id">
+        <template x-for="channel in channels" :key="channel.id">
           <button
             type="button"
             class="rail-btn"
-            :class="[k.channel === c.id && 'active', c.id === 'panel' && 'panel']"
-            :disabled="k.busy !== null"
-            @click="k.selectChannel(c.id)"
-            @pointerdown="holdStart(c.id)"
+            :class="[amp.channel === channel.id && 'active', channel.id === 'panel' && 'panel']"
+            :disabled="amp.busy !== null"
+            @click="amp.selectChannel(channel.id)"
+            @pointerdown="holdStart(channel.id)"
             @pointerup="holdEnd()"
             @pointerleave="holdEnd()"
           >
-            <span class="rail-bank" x-text="c.id === 'panel' ? 'panel' : c.bank + c.id.slice(1)"></span>
-            <span class="rail-name" x-text="k.channelNames[c.id]"></span>
+            <span class="rail-bank" x-text="channel.id === 'panel' ? 'panel' : channel.bank + channel.id.slice(1)"></span>
+            <span class="rail-name" x-text="amp.channelNames[channel.id]"></span>
           </button>
         </template>
       </div>
@@ -119,7 +97,7 @@
       <template x-if="pending">
         <div class="overlay center" @click.self="pending = null">
           <div class="confirm" role="alertdialog" aria-modal="true">
-            <h2>Overwrite <span x-text="k.channelNames[pending]"></span>?</h2>
+            <h2>Overwrite <span x-text="amp.channelNames[pending]"></span>?</h2>
             <p>This writes the live panel sound into the stored slot. The sound currently saved there is lost permanently.</p>
             <div class="confirm-actions">
               <button type="button" class="btn" @click="pending = null">Cancel</button>
@@ -131,7 +109,7 @@
     </div>
 
     <!-- ---- cabinet body ---- -->
-    <section class="body-grid" x-show="page === 'amp'">
+    <section class="body-grid">
 
       <!-- amp control plate -->
       <div class="plate amp-plate">
@@ -157,8 +135,8 @@
             @keydown="drag.key($event)"
           >
             <div class="ampdial-ring" aria-hidden="true"></div>
-            <template x-for="o in orbit" :key="o.label">
-              <span class="ampdial-orbit" :style="orbitStyle(o)" x-text="o.label"></span>
+            <template x-for="mark in orbit" :key="mark.label">
+              <span class="ampdial-orbit" :style="orbitStyle(mark)" x-text="mark.label"></span>
             </template>
             <svg viewBox="0 0 100 100" style="width:100%;height:100%">
               <defs>
@@ -181,8 +159,8 @@
 
         <!-- amp knobs -->
         <div class="knob-grid">
-          <template x-for="kn in ampKnobs" :key="kn.key">
-            <div x-data="knob(kn.key, kn.label, { accent: kn.accent, size: 'md' })">
+          <template x-for="ampKnob in ampKnobs" :key="ampKnob.key">
+            <div x-data="knob(ampKnob.key, ampKnob.label, { accent: ampKnob.accent, size: 'md' })">
               <div class="knob">
                 <div
                   class="knob-dial"
@@ -283,9 +261,9 @@
           <button
             type="button"
             class="toggle-btn"
-            :class="k.bool('bright') && 'on'"
-            :aria-pressed="k.bool('bright')"
-            @click="k.toggle('bright')"
+            :class="amp.bool('bright') && 'on'"
+            :aria-pressed="amp.bool('bright')"
+            @click="amp.toggle('bright')"
           >bright</button>
         </div>
       </div>
@@ -293,20 +271,20 @@
       <!-- pedalboard -->
       <div class="pedalboard amp-grille">
         <div class="stomp-grid">
-          <template x-for="b in blocks" :key="b.id">
-            <div class="stomp" :class="[k.bool(b.sw) && 'on', tileColor(b.label)]">
+          <template x-for="block in blocks" :key="block.id">
+            <div class="stomp" :class="[amp.bool(block.sw) && 'on', tileColor(block.label)]">
               <span class="stomp-sheen" aria-hidden="true"></span>
-              <button type="button" class="stomp-face" :aria-pressed="k.bool(b.sw)" @click="k.toggle(b.sw)">
+              <button type="button" class="stomp-face" :aria-pressed="amp.bool(block.sw)" @click="amp.toggle(block.sw)">
                 <span class="stomp-row">
-                  <span class="stomp-name" x-text="b.label"></span>
+                  <span class="stomp-name" x-text="block.label"></span>
                   <span style="position:relative;display:flex;height:1rem;width:1rem;align-items:center;justify-content:center">
-                    <span class="led" :class="['led-' + (b.led ? k.led(b.led) : 'off'), k.bool(b.sw) && b.led && k.led(b.led) !== 'off' && 'signal-breathe']"></span>
+                    <span class="led" :class="['led-' + (block.led ? amp.led(block.led) : 'off'), amp.bool(block.sw) && block.led && amp.led(block.led) !== 'off' && 'signal-breathe']"></span>
                   </span>
                 </span>
-                <span class="stomp-sub" x-text="b.sub || (k.bool(b.sw) ? 'engaged' : 'bypassed')"></span>
+                <span class="stomp-sub" x-text="block.sub || (amp.bool(block.sw) ? 'engaged' : 'bypassed')"></span>
                 <span class="stomp-bar"></span>
               </button>
-              <button type="button" class="stomp-gear" :aria-label="b.label + ' settings'" @click="openBlock = b.id">
+              <button type="button" class="stomp-gear" :aria-label="block.label + ' settings'" @click="openBlock = block.id">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
               </button>
             </div>
@@ -314,14 +292,14 @@
         </div>
 
         <div class="footswitches">
-          <template x-for="fs in footswitches" :key="fs.cc">
+          <template x-for="footswitch in footswitches" :key="footswitch.cc">
             <button
               type="button"
               class="footswitch"
-              :class="fs.block && k.bool(fs.block) && 'on'"
-              :title="`${fs.label} — CC${fs.cc}`"
-              @click="pressFootswitch(fs)"
-            ><span x-text="fs.label"></span></button>
+              :class="footswitch.block && amp.bool(footswitch.block) && 'on'"
+              :title="`${footswitch.label} — CC${footswitch.cc}`"
+              @click="pressFootswitch(footswitch)"
+            ><span x-text="footswitch.label"></span></button>
           </template>
         </div>
       </div>
@@ -357,279 +335,16 @@
           </div>
           <div class="treadle-actions">
             <button type="button" class="chip" style="justify-content:center" @click="$store.katana.setWah(!on)" x-text="on ? 'wah on' : 'wah off'"></button>
-            <button type="button" class="chip muted" style="justify-content:center" @click="sweepWah()">sweep</button>
             <button type="button" class="chip muted" style="justify-content:center" @click="openBlock = 'wah'">setup</button>
           </div>
 
-        <!-- Custom repeating sweep: N rocks of low..high, `seconds` each.
-             Inside the treadle wrap so it sits directly under the action
-             row - as a sibling the wrap's flex:1 pushed it to the riser
-             floor and left a gap. -->
-        <div x-data="wahRock">
-          <!-- Trigger and configure are separate: the gesture is the thing you
-               reach for mid-playing, so it fires on one press. The gear is
-               deliberately small - settings are a set-once affair. -->
-          <div class="rock-row">
-            <button
-              type="button"
-              class="chip rock-fire"
-              @click="run()"
-              :disabled="invalid || running || $store.katana.busy !== null"
-              :title="`run ${summary}`"
-            >
-              <span x-text="running ? 'rocking…' : 'rock'"></span>
-              <span class="rock-summary" x-text="summary"></span>
-            </button>
-            <button
-              type="button"
-              class="chip muted rock-gear"
-              @click="open = true"
-              :disabled="running || $store.katana.busy !== null"
-              aria-label="Configure the wah sweep"
-              title="Configure"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-            </button>
-          </div>
-
-          <template x-if="open">
-            <div class="overlay center" @click.self="open = false">
-              <div class="rock-panel" role="dialog" aria-modal="true" aria-label="Custom wah sweep">
-                <h2>Custom wah sweep</h2>
-                <p class="rock-sentence">
-                  <input type="number" min="1" max="32" step="1" x-model.number="intervals" aria-label="intervals" />
-                  <span>intervals of</span>
-                  <input type="number" min="0" max="100" step="1" x-model.number="low" aria-label="from" />
-                  <span>to</span>
-                  <input type="number" min="0" max="100" step="1" x-model.number="high" aria-label="to" />
-                  <span>in</span>
-                  <input type="number" min="0.05" max="30" step="0.1" x-model.number="seconds" aria-label="seconds each" />
-                  <span>seconds each</span>
-                </p>
-
-                <label class="rock-check">
-                  <input type="checkbox" x-model="bounce" />
-                  <span x-text="bounce ? 'rock down and back' : 'sweep up, snap back'"></span>
-                </label>
-
-                <p class="rock-total">
-                  total <strong x-text="total + 's'"></strong>
-                  <span class="rock-bad" x-show="invalid" x-text="invalid"></span>
-                </p>
-                <p class="rock-bad" x-show="error" x-text="error"></p>
-
-                <!-- No run button here: the panel only configures, the
-                     treadle button fires. -->
-                <div class="confirm-actions">
-                  <button type="button" class="btn" :disabled="invalid" @click="open = false">done</button>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
         </div>
       </div>
-    </section>
-
-    <!-- ================= AUX DECK ================= -->
-    <!-- Backing tracks out the analog jack into the amp's AUX IN. Nothing
-         here touches MIDI - see server/audio.py for why the two halves
-         stay apart. -->
-    <div class="deck-grid" x-show="page === 'deck'">
-
-      <!-- ---- transport ---- -->
-      <section class="deck-plate amp-plate">
-        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
-        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
-
-        <div class="deck-head">
-          <span class="deck-title engrave">Transport</span>
-          <span class="deck-hint" :class="d.error && 'bad'" x-text="d.label"></span>
-        </div>
-
-        <div class="now" :class="d.active && 'live'">
-          <span class="now-title" :class="!d.track && 'empty'"
-                x-text="d.track ? d.track.replace(/\.[^.]+$/, '') : 'nothing loaded'"></span>
-
-          <!-- Seeking restarts the player server-side, so the bar commits
-               on release rather than seeking as it is dragged. -->
-          <div
-            class="scrub"
-            :class="!d.track && 'idle'"
-            x-ref="bar"
-            x-data="scrubber"
-            role="slider"
-            aria-label="Track position"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-valuenow="Math.round(percent)"
-            tabindex="0"
-            @pointerdown="down($event)"
-            @pointermove="move($event)"
-            @pointerup="up($event)"
-            @pointercancel="up($event)"
-            @keydown="key($event)"
-          >
-            <div class="scrub-track"><div class="scrub-fill" :style="`width:${percent}%`"></div></div>
-            <div class="scrub-head" :style="`left:${percent}%`"></div>
-          </div>
-
-          <div class="times">
-            <span class="cur" x-text="d.elapsedLabel"></span>
-            <span x-text="d.durationLabel"></span>
-          </div>
-        </div>
-
-        <div class="tbar">
-          <button type="button" class="tbtn primary" :class="d.active && 'live'"
-                  :disabled="d.busy || (!d.track && !d.tracks.length)"
-                  :aria-label="d.playing ? 'Pause' : 'Play'"
-                  @click="d.toggle()">
-            <template x-if="d.playing">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
-            </template>
-            <template x-if="!d.playing">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>
-            </template>
-          </button>
-
-          <button type="button" class="tbtn" aria-label="Stop"
-                  :disabled="!d.active && !d.position" @click="d.stop()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-          </button>
-
-          <button type="button" class="tbtn" :class="d.loop && 'on'"
-                  :aria-pressed="d.loop" aria-label="Loop track"
-                  @click="d.loop = !d.loop">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-          </button>
-
-          <div class="level">
-            <span class="level-label">level</span>
-            <input type="range" min="0" max="100" step="1"
-                   aria-label="Aux output level"
-                   :style="`--pct:${d.volume * 100}%`"
-                   :value="Math.round(d.volume * 100)"
-                   @input="d.setVolume($event.target.value / 100)" />
-            <span class="level-val" :class="d.hot && 'hot'" x-text="d.volume.toFixed(2)"></span>
-          </div>
-        </div>
-
-        <!-- Make-up gain. Its own row rather than a second fader beside
-             `level`: that one is free and instant, this one rebuilds the
-             audio through a limiter and restarts the track. -->
-        <div class="boost" :class="d.boostDb && 'on'">
-          <div class="boost-head">
-            <span class="boost-title" x-text="d.boostDb ? 'boost' : 'boost · off'"></span>
-            <span class="boost-note" x-text="d.boostLabel"></span>
-          </div>
-          <div class="boost-steps" role="group" aria-label="Backing track boost">
-            <template x-for="db in [0, 3, 6, 9, 12]" :key="db">
-              <button type="button" class="boost-step"
-                      :class="d.boostDb === db && 'active'"
-                      :disabled="db > d.maxBoostDb || d.busy"
-                      :aria-pressed="d.boostDb === db"
-                      @click="d.applyBoost(db)"
-                      x-text="db ? `+${db}` : 'off'"></button>
-            </template>
-          </div>
-        </div>
-
-        <!-- Count-in. A property of how you are practising today, not of
-             the recording - the file on disk is never modified. -->
-        <div class="countin" :class="!d.countIn && 'off'" x-data="tapTempo">
-          <div class="countin-head">
-            <span class="countin-title" x-text="d.countIn ? 'count-in' : 'count-in · off'"></span>
-            <button type="button" class="chip muted" style="padding:.25rem .5rem;font-size:.55rem"
-                    @click="tap()">tap tempo</button>
-            <button type="button" class="switch" :class="d.countIn && 'on'"
-                    role="switch" :aria-checked="d.countIn" aria-label="Count-in"
-                    @click="d.countIn = !d.countIn"></button>
-          </div>
-
-          <p class="rock-sentence" style="font-size:.82rem;line-height:2">
-            <input type="number" min="1" max="8" step="1" aria-label="bars"
-                   :disabled="!d.countIn" x-model.number="d.bars" />
-            <span x-text="d.bars === 1 ? 'bar of' : 'bars of'"></span>
-            <input type="number" min="30" max="300" step="1" aria-label="BPM"
-                   :disabled="!d.countIn" x-model.number="d.bpm" />
-            <span>bpm in</span>
-            <input type="number" min="2" max="12" step="1" aria-label="beats per bar"
-                   :disabled="!d.countIn" x-model.number="d.beatsPerBar" />
-            <span>beats per bar —</span>
-            <strong style="color:var(--signal-lime)" x-text="d.countInSeconds.toFixed(1) + ' s'"></strong>
-          </p>
-
-          <!-- One lamp per beat, lit as the click runs. -->
-          <div class="pips" aria-hidden="true">
-            <template x-for="i in d.beats" :key="i">
-              <span class="pip"
-                    :class="[(i - 1) % d.beatsPerBar === 0 && 'downbeat',
-                             d.counting && (i - 1) <= d.currentBeat && 'lit']"></span>
-            </template>
-            <span class="pips-note"
-                  x-text="d.counting ? `beat ${d.currentBeat + 1} of ${d.beats}` : `${d.beats} beats before the track`"></span>
-          </div>
-        </div>
-      </section>
-
-      <!-- ---- library ---- -->
-      <section class="deck-plate amp-plate">
-        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
-        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
-
-        <div class="deck-head">
-          <span class="deck-title engrave">Library</span>
-          <span class="deck-hint" x-text="`${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'}`"></span>
-        </div>
-
-        <form class="paste-row" @submit.prevent="d.fetch($refs.url.value); $refs.url.value = ''">
-          <input type="url" class="deck-input" x-ref="url" :disabled="d.fetching"
-                 placeholder="Paste a YouTube link to add it to the library" />
-          <button type="submit" class="chip amber" :disabled="d.fetching"
-                  x-text="d.fetching ? 'fetching…' : 'fetch'"></button>
-        </form>
-
-        <div class="search-row">
-          <input type="search" class="deck-input" placeholder="Filter tracks" x-model="d.filter" />
-          <button type="button" class="chip muted" @click="d.reload()">rescan</button>
-        </div>
-
-        <div class="tracklist">
-          <template x-for="t in d.visibleTracks" :key="t.file">
-            <div class="track-row" :class="d.track === t.file && 'current'">
-              <button type="button" class="track-name" style="text-align:left"
-                      @click="d.choose(t)" x-text="t.name"></button>
-              <span class="track-dur" x-text="t.duration ? Math.floor(t.duration / 60) + ':' + String(Math.floor(t.duration % 60)).padStart(2, '0') : '--:--'"></span>
-              <button type="button" class="track-drop" :aria-label="`Delete ${t.name}`"
-                      @click="confirm(`Delete ${t.name}? The file is removed from disk.`) && d.remove(t)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-              </button>
-            </div>
-          </template>
-
-          <template x-if="!d.visibleTracks.length">
-            <p class="empty-note" x-text="d.filter ? 'No track matches that.' : 'Drop audio files into tracks/, or paste a YouTube link above.'"></p>
-          </template>
-        </div>
-      </section>
-    </div>
-
-    <!-- ---- routing: which jack the audio actually leaves by ---- -->
-    <section class="routing amp-grille" x-show="page === 'deck'">
-      <span class="routing-label">output</span>
-      <select x-model="d.sink" aria-label="Audio output device">
-        <template x-for="s in d.sinks" :key="s.name">
-          <option :value="s.name" x-text="s.name + (s.reamps ? '  — re-amps, do not use' : '')"></option>
-        </template>
-      </select>
-      <span class="routing-label">→ Katana AUX IN</span>
-      <span class="warn" x-show="d.hot">above 0.85 the analog jack clips — balance with the amp's master instead</span>
     </section>
   </div>
 
   <!-- ---- EQ dock: anchored bottom-right, clear of the footswitch row ---- -->
-  <div class="eq-anchor" x-show="page === 'amp'" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad">
+  <div class="eq-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad">
     <div class="eq-dock" :class="!expanded && 'collapsed'">
       <div class="eq-head">
         <button type="button" class="eq-toggle" @click="toggleExpanded()" :aria-expanded="expanded">
@@ -665,8 +380,8 @@
         </svg>
       </div>
       <div class="eq-labels">
-        <template x-for="(b, i) in bands" :key="b.key">
-          <span :class="hover === i && 'hot'" x-text="hover === i ? $store.katana.num(b.key) : b.label"></span>
+        <template x-for="(band, index) in bands" :key="band.key">
+          <span :class="hover === index && 'hot'" x-text="hover === index ? $store.katana.num(band.key) : band.label"></span>
         </template>
       </div>
       </div>
@@ -693,12 +408,12 @@
             <div class="field">
               <span class="field-label">effect</span>
               <div class="segmented">
-                <template x-for="f in editor.fxSlot.options" :key="f.value">
+                <template x-for="effect in editor.fxSlot.options" :key="effect.value">
                   <button
                     type="button" class="seg"
-                    :class="f.value === editor.fxSlot.current && 'active'"
-                    @click="k.set(editor.fxSlot.typeKey, f.value)"
-                    x-text="f.label"
+                    :class="effect.value === editor.fxSlot.current && 'active'"
+                    @click="amp.set(editor.fxSlot.typeKey, effect.value)"
+                    x-text="effect.label"
                   ></button>
                 </template>
               </div>
@@ -706,16 +421,16 @@
           </template>
 
           <!-- enum pickers: flat, always-visible rows instead of dropdowns -->
-          <template x-for="p in (editor ? editor.enums : [])" :key="p.key">
+          <template x-for="param in (editor ? editor.enums : [])" :key="param.key">
             <div class="field">
-              <span class="field-label" x-text="p.label"></span>
+              <span class="field-label" x-text="param.label"></span>
               <div class="segmented">
-                <template x-for="o in p.options" :key="o.value">
+                <template x-for="option in param.options" :key="option.value">
                   <button
                     type="button" class="seg"
-                    :class="o.value === k.num(p.key) && 'active'"
-                    @click="k.set(p.key, o.value)"
-                    x-text="o.label"
+                    :class="option.value === amp.num(param.key) && 'active'"
+                    @click="amp.set(param.key, option.value)"
+                    x-text="option.label"
                   ></button>
                 </template>
               </div>
@@ -728,8 +443,8 @@
 
           <!-- the block's own knobs -->
           <div class="knob-row">
-            <template x-for="p in (editor ? editor.knobs : [])" :key="p.key">
-              <div x-data="knob(p.key, p.label, { size: 'sm', min: p.min, max: p.max, unit: p.unit })">
+            <template x-for="param in (editor ? editor.knobs : [])" :key="param.key">
+              <div x-data="knob(param.key, param.label, { size: 'sm', min: param.min, max: param.max, unit: param.unit })">
                 <div class="knob">
                   <div
                     class="knob-dial"
@@ -771,13 +486,13 @@
               </div>
             </template>
 
-            <template x-for="p in (editor ? editor.toggles : [])" :key="p.key">
+            <template x-for="param in (editor ? editor.toggles : [])" :key="param.key">
               <button
                 type="button" class="toggle-btn"
-                :class="k.bool(p.key) && 'on'"
-                :aria-pressed="k.bool(p.key)"
-                @click="k.toggle(p.key)"
-                x-text="p.label"
+                :class="amp.bool(param.key) && 'on'"
+                :aria-pressed="amp.bool(param.key)"
+                @click="amp.toggle(param.key)"
+                x-text="param.label"
               ></button>
             </template>
           </div>

@@ -140,7 +140,7 @@ browser.
 ## Graphic EQ
 
 Ten bands, **−24 … +24 dB**, 0 is flat. The amp stores 0–48 internally;
-the API converts, so the UI works in dB.
+the amp library converts, so the API and the UI work in dB.
 
 | Parameter | Type | Range | Notes |
 |---|---|---|---|

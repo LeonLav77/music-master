@@ -4,40 +4,37 @@
 // only the behaviour and the derived geometry, so the markup stays readable.
 
 import {
-  dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES, KNOB_TICKS,
-  eqPath, eqHit, eqGapFill, EQ_N, EQ_RANGE,
+  dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES,
+  eqPath, eqHit, eqGapFill,
 } from "./controls.js";
 import { EQ_BANDS, AMP_MODEL_OPTIONS } from "./schema.js";
 import { transport } from "./transport.js";
-import { clock } from "./deck.js";
 
 const store = () => Alpine.store("katana");
 
-/** One amp knob. `key` is the parameter; omit `onSet` for a read-only knob. */
+/** One amp knob. `key` is the parameter; pass `disabled` for a read-only one. */
 export function knob(key, label, { accent = "steel", size = "md", min = 0, max = 100, unit = "", disabled = false } = {}) {
   return {
     key, label, accent, size, min, max, unit, disabled,
     sizePx: KNOB_SIZES[size],
-    ticks: KNOB_TICKS,
     trackPath: knobArc(KNOB_START, KNOB_START + KNOB_SWEEP),
     capId: `cap-${key}`,
 
     get value() { return store().num(this.key); },
     get angle() { return knobAngle(this.value, this.min, this.max); },
     get valuePath() { return knobArc(KNOB_START, this.angle + 0.01); },
-    get readout() { return this.disabled ? `${Math.round(this.value)}${this.unit}` : `${Math.round(this.value)}${this.unit}`; },
-    get interactive() { return !this.disabled; },
+    get readout() { return `${Math.round(this.value)}${this.unit}`; },
 
     drag: null,
     init() {
       const self = this;
       this.drag = dragValue({
         min, max,
-        travel: size === "lg" ? 260 : 200,
+        travel: 200,
         holdKey: key,
-        hold: (k, h) => store().hold(k, h),
+        hold: (key, holding) => store().hold(key, holding),
         get: () => store().num(self.key),
-        set: (v) => store().set(self.key, v),
+        set: (value) => store().set(self.key, value),
       });
     },
   };
@@ -58,18 +55,18 @@ export function ampDial(size = 180) {
 
     get value() { return store().num("amp_type"); },
     get index() {
-      const i = this.options.findIndex((o) => o.value === this.value);
-      return Math.max(0, i);
+      const index = this.options.findIndex((option) => option.value === this.value);
+      return Math.max(0, index);
     },
     get name() {
-      return this.options.find((o) => o.value === this.value)?.label ?? "—";
+      return this.options.find((option) => option.value === this.value)?.label ?? "—";
     },
     get pointerAngle() { return (this.index / this.options.length) * 360; },
-    orbitStyle(o) {
-      const rad = ((o.angle - 90) * Math.PI) / 180;
-      const x = 50 + 38 * Math.cos(rad);
-      const y = 50 + 38 * Math.sin(rad);
-      return `left:${x}%;top:${y}%;transform:translate(-50%,-50%)`;
+    orbitStyle(mark) {
+      const rad = ((mark.angle - 90) * Math.PI) / 180;
+      const left = 50 + 38 * Math.cos(rad);
+      const top = 50 + 38 * Math.sin(rad);
+      return `left:${left}%;top:${top}%;transform:translate(-50%,-50%)`;
     },
 
     drag: null,
@@ -80,11 +77,11 @@ export function ampDial(size = 180) {
         max: AMP_MODEL_OPTIONS.length - 1,
         travel: 260,
         holdKey: "amp_type",
-        hold: (k, h) => store().hold(k, h),
+        hold: (key, holding) => store().hold(key, holding),
         get: () => self.index,
-        set: (i) => {
-          const v = AMP_MODEL_OPTIONS[i]?.value;
-          if (v !== undefined) store().set("amp_type", v);
+        set: (index) => {
+          const value = AMP_MODEL_OPTIONS[index]?.value;
+          if (value !== undefined) store().set("amp_type", value);
         },
       });
     },
@@ -116,9 +113,9 @@ export function treadle() {
     },
 
     apply(ev) {
-      const r = this.$refs.slab.getBoundingClientRect();
-      const f = 1 - (ev.clientY - r.top) / r.height;
-      store().set("wah_position", Math.round(Math.min(100, Math.max(0, f * 100))));
+      const rect = this.$refs.slab.getBoundingClientRect();
+      const fraction = 1 - (ev.clientY - rect.top) / rect.height;
+      store().set("wah_position", Math.round(Math.min(100, Math.max(0, fraction * 100))));
     },
     down(ev) {
       ev.target.setPointerCapture?.(ev.pointerId);
@@ -137,10 +134,10 @@ export function treadle() {
     },
     key(ev) {
       const map = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 };
-      const d = map[ev.key];
-      if (d === undefined) return;
+      const step = map[ev.key];
+      if (step === undefined) return;
       ev.preventDefault();
-      store().set("wah_position", Math.min(100, Math.max(0, this.value + d)));
+      store().set("wah_position", Math.min(100, Math.max(0, this.value + step)));
     },
   };
 }
@@ -163,26 +160,19 @@ export function eqPad() {
 
     get values() {
       const out = {};
-      for (const b of EQ_BANDS) out[b.key] = store().num(b.key);
+      for (const band of EQ_BANDS) out[band.key] = store().num(band.key);
       return out;
     },
     get on() { return store().bool("eq_switch"); },
     get curve() { return eqPath(this.values, 50); },
     get fill() { return `${this.curve} L 100 100 L 0 100 Z`; },
-    points() {
-      return EQ_BANDS.map((b, i) => ({
-        key: b.key, label: b.label, v: this.values[b.key] ?? 0,
-        x: (i / (EQ_N - 1)) * 100,
-        y: 50 - ((this.values[b.key] ?? 0) / EQ_RANGE) * 50,
-      }));
-    },
 
     apply(ev) {
-      const r = this.$refs.pad.getBoundingClientRect();
-      const { idx, value } = eqHit(r, ev.clientX, ev.clientY);
+      const rect = this.$refs.pad.getBoundingClientRect();
+      const { idx, value } = eqHit(rect, ev.clientX, ev.clientY);
       // fill the gap when the finger moves fast
-      for (const g of eqGapFill(this._lastIdx, idx, value, this.values)) {
-        store().set(g.key, g.value);
+      for (const fill of eqGapFill(this._lastIdx, idx, value, this.values)) {
+        store().set(fill.key, fill.value);
       }
       this._lastIdx = idx;
       this.hover = idx;
@@ -194,7 +184,7 @@ export function eqPad() {
       this.dragging = true;
       // Drawing sweeps across bands, so hold the whole row until the
       // gesture ends rather than one band at a time.
-      EQ_BANDS.forEach((b) => store().hold(b.key, true));
+      EQ_BANDS.forEach((band) => store().hold(band.key, true));
       this.apply(ev);
     },
     move(ev) {
@@ -206,76 +196,10 @@ export function eqPad() {
       this.dragging = false;
       this.hover = null;
       this._lastIdx = null;
-      EQ_BANDS.forEach((b) => store().hold(b.key, false));
+      EQ_BANDS.forEach((band) => store().hold(band.key, false));
     },
     flat() {
-      EQ_BANDS.forEach((b) => store().set(b.key, 0));
-    },
-  };
-}
-
-/** The custom wah gesture: N sweeps of low..high, `seconds` each.
- *  Settings persist per browser - this is a per-player feel thing, and
- *  retyping four numbers before every take would make it unusable. */
-export function wahRock() {
-  const saved = (() => {
-    try { return JSON.parse(localStorage.getItem("katana.rock") || "{}"); }
-    catch { return {}; }
-  })();
-
-  return {
-    open: false,
-    running: false,
-    error: null,
-    intervals: saved.intervals ?? 4,
-    low: saved.low ?? 0,
-    high: saved.high ?? 50,
-    seconds: saved.seconds ?? 2.3,
-    bounce: saved.bounce ?? true,
-
-    get total() { return (this.intervals * this.seconds).toFixed(1); },
-    get summary() {
-      return `${this.intervals} × ${this.low}\u2192${this.high} @ ${this.seconds}s`;
-    },
-    /** Mirrors the server's guards, so a bad value is caught before the
-     *  request rather than coming back as a 422. */
-    get invalid() {
-      if (this.low === this.high) return "low and high must differ";
-      if (this.intervals < 1 || this.intervals > 32) return "1-32 intervals";
-      if (this.seconds < 0.05 || this.seconds > 30) return "0.05-30 s";
-      if (this.intervals * this.seconds > 120) return "total must be under 120 s";
-      return null;
-    },
-
-    persist() {
-      try {
-        localStorage.setItem("katana.rock", JSON.stringify({
-          intervals: this.intervals, low: this.low, high: this.high,
-          seconds: this.seconds, bounce: this.bounce,
-        }));
-      } catch {}
-    },
-
-    async run() {
-      if (this.invalid || this.running) return;
-      this.persist();
-      this.error = null;
-      this.running = true;
-      // The gesture runs for seconds and holds the amp lock; show it as busy
-      // so the surface does not look frozen and nothing else is sent.
-      try {
-        await Alpine.store("katana").runBusy(
-          `wah ${this.summary}`,
-          () => transport.rockWah({
-            intervals: this.intervals, low: this.low, high: this.high,
-            seconds: this.seconds, bounce: this.bounce,
-          }),
-        );
-      } catch (e) {
-        this.error = String(e.message ?? e);
-      } finally {
-        this.running = false;
-      }
+      EQ_BANDS.forEach((band) => store().set(band.key, 0));
     },
   };
 }
@@ -297,91 +221,6 @@ export function channelRail() {
       const id = this.pending;
       this.pending = null;
       if (id) store().saveToChannel(id);
-    },
-  };
-}
-
-// ---- aux deck ----
-
-const deck = () => Alpine.store("deck");
-
-/** The scrub bar under the transport.
- *
- * Seeking restarts the player process server-side, so this deliberately
- * does not seek while dragging: it tracks a local position under the
- * finger and commits once on release. Scrubbing continuously would spawn
- * an ffmpeg trim and a new pw-play per pointermove.
- */
-export function scrubber() {
-  return {
-    dragging: false,
-    preview: 0,
-
-    /** Where to draw the head: the finger while dragging, else the track. */
-    get percent() {
-      const d = deck();
-      if (this.dragging) return this.preview;
-      return d.progress;
-    },
-    get label() {
-      const d = deck();
-      if (!this.dragging || !d.duration) return d.elapsedLabel;
-      return clock((this.preview / 100) * d.duration);
-    },
-
-    at(ev) {
-      const r = this.$refs.bar.getBoundingClientRect();
-      const f = (ev.clientX - r.left) / r.width;
-      return Math.min(100, Math.max(0, f * 100));
-    },
-    down(ev) {
-      // A loaded track can be scrubbed whether or not it is running - stop
-      // keeps it loaded, and setting the start point before pressing play
-      // is a normal thing to want.
-      if (!deck().track) return;
-      ev.target.setPointerCapture?.(ev.pointerId);
-      this.dragging = true;
-      this.preview = this.at(ev);
-    },
-    move(ev) {
-      if (!this.dragging) return;
-      this.preview = this.at(ev);
-    },
-    up(ev) {
-      if (!this.dragging) return;
-      ev.target.releasePointerCapture?.(ev.pointerId);
-      this.dragging = false;
-      const d = deck();
-      if (d.duration) void d.seek((this.preview / 100) * d.duration);
-    },
-    key(ev) {
-      const d = deck();
-      if (!d.track || !d.duration) return;
-      const step = ev.shiftKey ? 30 : 5;
-      if (ev.key === "ArrowRight") { void d.seek(d.position + step); ev.preventDefault(); }
-      if (ev.key === "ArrowLeft") { void d.seek(d.position - step); ev.preventDefault(); }
-    },
-  };
-}
-
-/** Tap tempo. Four taps beat typing a BPM you had to work out first. */
-export function tapTempo() {
-  return {
-    taps: [],
-
-    tap() {
-      const now = performance.now();
-      // A gap longer than a very slow bar means a new count, not a
-      // continuation - otherwise the average drags toward whenever you
-      // last touched it.
-      this.taps = this.taps.filter((t) => now - t < 3000);
-      this.taps.push(now);
-      if (this.taps.length < 2) return;
-
-      const gaps = this.taps.slice(1).map((t, i) => t - this.taps[i]);
-      const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-      const bpm = Math.round(60000 / mean);
-      deck().bpm = Math.min(300, Math.max(30, bpm));
     },
   };
 }

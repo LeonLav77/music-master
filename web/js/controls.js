@@ -1,8 +1,5 @@
 // Pointer interactions and the geometry the SVG controls draw from.
 //
-// This is the part that carried the most risk in the port: pointer capture,
-// axis mapping, snapping and the EQ gap-fill all had to keep behaving the
-// same on the panel's touchscreen.
 
 import { EQ_BANDS } from "./schema.js";
 
@@ -12,25 +9,22 @@ import { EQ_BANDS } from "./schema.js";
  *  lazily through getters so the current value is always the live one -
  *  Alpine has no dependency array to re-close over. */
 export function dragValue(opts) {
-  const start = { p: 0, v: 0 };
-  const axis = opts.axis ?? "y";
+  // Vertical: drag up to turn up, `travel` pixels for the full range.
+  const start = { y: 0, v: 0 };
   const travel = opts.travel ?? 220;
-  const step = opts.step ?? 1;
 
   return {
     down(ev) {
       ev.target.setPointerCapture?.(ev.pointerId);
-      start.p = axis === "y" ? ev.clientY : ev.clientX;
+      start.y = ev.clientY;
       start.v = opts.get();
       if (opts.holdKey) opts.hold(opts.holdKey, true);
     },
     move(ev) {
       if (!ev.target.hasPointerCapture?.(ev.pointerId)) return;
-      const cur = axis === "y" ? ev.clientY : ev.clientX;
-      const delta = axis === "y" ? start.p - cur : cur - start.p;
+      const delta = start.y - ev.clientY;
       const raw = start.v + (delta / travel) * (opts.max - opts.min);
-      const snapped = Math.round(raw / step) * step;
-      const next = Math.min(opts.max, Math.max(opts.min, snapped));
+      const next = Math.min(opts.max, Math.max(opts.min, Math.round(raw)));
       if (next !== opts.get()) opts.set(next);
     },
     up(ev) {
@@ -40,14 +34,14 @@ export function dragValue(opts) {
     key(ev) {
       const big = (opts.max - opts.min) / 10;
       const map = {
-        ArrowUp: step, ArrowRight: step,
-        ArrowDown: -step, ArrowLeft: -step,
+        ArrowUp: 1, ArrowRight: 1,
+        ArrowDown: -1, ArrowLeft: -1,
         PageUp: big, PageDown: -big,
       };
-      const d = map[ev.key];
-      if (d === undefined) return;
+      const step = map[ev.key];
+      if (step === undefined) return;
       ev.preventDefault();
-      opts.set(Math.min(opts.max, Math.max(opts.min, Math.round(opts.get() + d))));
+      opts.set(Math.min(opts.max, Math.max(opts.min, Math.round(opts.get() + step))));
     },
   };
 }
@@ -60,7 +54,7 @@ const KNOB_R = 44;
 
 /** SVG arc path on the knob's track circle. */
 export function knobArc(from, to) {
-  const rad = (a) => ((a - 90) * Math.PI) / 180;
+  const rad = (angle) => ((angle - 90) * Math.PI) / 180;
   const x1 = 50 + KNOB_R * Math.cos(rad(from));
   const y1 = 50 + KNOB_R * Math.sin(rad(from));
   const x2 = 50 + KNOB_R * Math.cos(rad(to));
@@ -77,11 +71,7 @@ export function knobAngle(value, min, max) {
 export const KNOB_SIZES = {
   sm: "clamp(60px, 5.6vw, 104px)",
   md: "clamp(96px, 7.4vw, 136px)",
-  lg: "clamp(128px, 9vw, 168px)",
 };
-
-/** The 24 tick marks around the cap. */
-export const KNOB_TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
 
 // ---- EQ pad ----
 
@@ -91,11 +81,11 @@ export const EQ_RANGE = 24;
 /** Polyline path for a set of band values. `spread` is the vertical share of
  *  the viewBox the full range uses (the mini curve is flatter than the pad). */
 export function eqPath(values, spread = 50) {
-  return EQ_BANDS.map((b, i) => {
-    const v = values[b.key] ?? 0;
-    const x = (i / (EQ_N - 1)) * 100;
-    const y = 50 - (v / EQ_RANGE) * spread;
-    return `${i === 0 ? "M" : "L"} ${x} ${y}`;
+  return EQ_BANDS.map((band, index) => {
+    const value = values[band.key] ?? 0;
+    const across = (index / (EQ_N - 1)) * 100;
+    const height = 50 - (value / EQ_RANGE) * spread;
+    return `${index === 0 ? "M" : "L"} ${across} ${height}`;
   }).join(" ");
 }
 
@@ -115,9 +105,9 @@ export function eqGapFill(prev, idx, clamped, values) {
   if (prev === null || Math.abs(idx - prev) <= 1) return out;
   const from = values[EQ_BANDS[prev].key] ?? 0;
   const step = idx > prev ? 1 : -1;
-  for (let i = prev + step; i !== idx; i += step) {
-    const t = (i - prev) / (idx - prev);
-    out.push({ key: EQ_BANDS[i].key, value: Math.round(from + (clamped - from) * t) });
+  for (let band = prev + step; band !== idx; band += step) {
+    const progress = (band - prev) / (idx - prev);
+    out.push({ key: EQ_BANDS[band].key, value: Math.round(from + (clamped - from) * progress) });
   }
   return out;
 }

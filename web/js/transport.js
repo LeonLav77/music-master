@@ -1,29 +1,14 @@
 // Talks to the FastAPI server. Nothing else in the UI knows about HTTP or
 // WebSockets - the store calls these methods and that is the whole seam.
 //
-// Changes go over the WebSocket when it is open: no HTTP round-trip per
-// slider step, and the server does not echo a change back to whoever made
-// it, so a control being dragged is never fought by its own value. HTTP is
-// the fallback for when the socket is down.
+// Live changes (knobs, channels) go over the WebSocket: no HTTP round-trip
+// per slider step, and the server does not echo a change back to whoever
+// made it, so a control being dragged is never fought by its own value.
+// One-off actions (save, resync, wah gestures) are plain HTTP.
 
-/**
- * Where the API lives.
- *
- * The server serves this page and the API on the same origin, so the answer
- * is "wherever the page came from" - no host, no port, nothing to keep in
- * sync. Whatever address you opened, from a phone or the kiosk, the API is
- * on it.
- *
- * Set window.KATANA_API_URL before this script loads to point somewhere
- * else, for a UI served separately from the API it talks to.
- */
-function resolveBase() {
-  const configured = window.KATANA_API_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  return window.location.origin;
-}
-
-const BASE = resolveBase();
+// The server serves this page and the API together, so the API is wherever
+// the page came from.
+export const BASE = window.location.origin;
 
 /** The amp stores booleans as 0/1. */
 function toWire(value) {
@@ -46,8 +31,6 @@ let socket = null;
 let messageListeners = [];
 let stateListeners = [];
 let reconnectAttempts = 0;
-let reconnectTimer = null;
-let closedByUs = false;
 
 function announce(state) {
   stateListeners.forEach((fn) => fn(state));
@@ -78,44 +61,58 @@ function openSocket() {
   ws.onclose = () => {
     socket = null;
     announce("closed");
-    if (closedByUs) return;
     // Back off, but keep trying - the Pi may still be booting.
     const delay = Math.min(1000 * 2 ** reconnectAttempts, 10000);
     reconnectAttempts += 1;
-    reconnectTimer = setTimeout(openSocket, delay);
+    setTimeout(openSocket, delay);
   };
 
   ws.onerror = () => ws.close();
 }
 
-function socketReady() {
-  return socket !== null && socket.readyState === WebSocket.OPEN;
+/** Send one message over the socket. While it is reconnecting there is
+ *  nowhere to send it, and the change is dropped. */
+function sendMessage(message) {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
+
+function write(key, value) {
+  sendMessage({ type: "set", name: key, value: toWire(value) });
+}
+
+// At most one write per parameter every THROTTLE_MS, and the last value
+// always goes out. The amp takes ~40 writes/s; faster than that, writes
+// queue on the server and the sound lags behind the finger.
+const THROTTLE_MS = 40;
+const waiting = new Map(); // key -> newest value not sent yet
+const timers = new Map();  // key -> the running throttle timer
 
 export const transport = {
   connect() {
-    closedByUs = false;
     openSocket();
   },
 
-  disconnect() {
-    closedByUs = true;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    socket?.close();
-    socket = null;
-  },
-
-  /** Fire-and-forget parameter write. */
+  /** Fire-and-forget parameter write, throttled per parameter. */
   send(key, value) {
-    const wire = toWire(value);
-    if (socketReady()) {
-      socket.send(JSON.stringify({ type: "set", name: key, value: wire }));
+    if (timers.has(key)) {
+      // Sent one recently - just remember the newest.
+      waiting.set(key, value);
       return;
     }
-    void request(`/api/parameter/${key}`, {
-      method: "PUT",
-      body: JSON.stringify({ value: wire }),
-    }).catch((error) => console.error("[katana]", error));
+    // First change: send right away, no delay.
+    write(key, value);
+    const tick = () => {
+      if (waiting.has(key)) {
+        // Something changed meanwhile: send the latest.
+        write(key, waiting.get(key));
+        waiting.delete(key);
+        timers.set(key, setTimeout(tick, THROTTLE_MS));
+      } else {
+        // Quiet - the next change goes out instantly again.
+        timers.delete(key);
+      }
+    };
+    timers.set(key, setTimeout(tick, THROTTLE_MS));
   },
 
   /** Footswitch-style CC message. */
@@ -128,46 +125,12 @@ export const transport = {
 
   /** Switch tone-setting channel. The amp reloads, so a whole new state follows. */
   selectChannel(id) {
-    if (socketReady()) {
-      socket.send(JSON.stringify({ type: "channel", name: id }));
-      return;
-    }
-    void request(`/api/channel/${id}`, { method: "POST" }).catch((error) =>
-      console.error("[katana]", error),
-    );
+    sendMessage({ type: "channel", name: id });
   },
 
   /** Copy the live sound into a stored channel. Overwrites it permanently. */
   async saveToPatch(number) {
     return request(`/api/patch/${number}`, { method: "POST" });
-  },
-
-  /** Server-side treadle sweep - one request, never stepped from the browser. */
-  sweepWah(from, to, ms) {
-    const steps = 25;
-    void request("/api/wah/sweep", {
-      method: "POST",
-      body: JSON.stringify({
-        start: from,
-        end: to,
-        steps,
-        delay: Math.max(ms / steps / 1000, 0.01),
-      }),
-    }).catch((error) => console.error("[katana]", error));
-  },
-
-  /** Repeating wah gesture - N sweeps of low..high, `seconds` each.
-   *  Server-side for the same reason as sweepWah: hundreds of MIDI writes. */
-  rockWah({ intervals, low, high, seconds, bounce }) {
-    return request("/api/wah/rock", {
-      method: "POST",
-      body: JSON.stringify({ intervals, low, high, seconds, bounce }),
-    });
-  },
-
-  /** Everything the amp currently reports. */
-  async state() {
-    return request("/api/state");
   },
 
   /** Full state re-read. The amp never reports physical knob turns. */
@@ -180,98 +143,17 @@ export const transport = {
     return request("/api/channels");
   },
 
-  /** .tsl files on the server and the patches inside them. */
-  async patchFiles() {
-    return request("/api/tsl");
-  },
-
-  async loadPatchFile(file, index) {
-    return request(`/api/tsl/${encodeURIComponent(file)}/${index}`, { method: "POST" });
-  },
-
-  // ---- aux deck ----
-  //
-  // Plain HTTP, unlike the parameter writes above: these are one-shot
-  // commands a few seconds apart, not a stream of slider steps, so there is
-  // nothing for the WebSocket to save. State still arrives over the socket -
-  // the server pushes "audio" frames - so the deck follows the player the
-  // same way the surface follows the amp.
-
-  /** Playable files in tracks/, with durations. */
-  async tracks() {
-    return request("/api/audio/tracks");
-  },
-
-  /** Ranges the server enforces, so the UI does not hardcode them. */
-  async audioLimits() {
-    return request("/api/audio/limits");
-  },
-
-  /** Output devices. The Katana's USB input is flagged, not hidden. */
-  async sinks() {
-    return request("/api/audio/sinks");
-  },
-
-  /** Where the transport is right now. */
-  async audioStatus() {
-    return request("/api/audio/status");
-  },
-
-  /** Start a track. `bpm` of 0 or null means no count-in. */
-  async play({ track, volume, sink, start, bpm, bars, beatsPerBar, boostDb }) {
-    return request("/api/audio/play", {
-      method: "POST",
-      body: JSON.stringify({
-        track, volume, sink, start,
-        bpm: bpm || null, bars, beats_per_bar: beatsPerBar,
-        boost_db: boostDb || 0,
-      }),
-    });
-  },
-
-  /** Level of the running track. Takes effect immediately, no restart. */
-  async setVolume(volume) {
-    return request("/api/audio/volume", {
-      method: "POST",
-      body: JSON.stringify({ volume }),
-    });
-  },
-
-  async pauseAudio()  { return request("/api/audio/pause",  { method: "POST" }); },
-  async resumeAudio() { return request("/api/audio/resume", { method: "POST" }); },
-  async stopAudio()   { return request("/api/audio/stop",   { method: "POST" }); },
-
-  /** Jump to a position. Restarts the player, so send it on release. */
-  async seekAudio(position) {
-    return request("/api/audio/seek", {
-      method: "POST",
-      body: JSON.stringify({ position }),
-    });
-  },
-
-  /** Download a YouTube link into the library. Slow - it holds until done. */
-  async fetchTrack(url) {
-    return request("/api/audio/fetch", {
-      method: "POST",
-      body: JSON.stringify({ url }),
-    });
-  },
-
-  async deleteTrack(file) {
-    return request(`/api/audio/tracks/${encodeURIComponent(file)}`, { method: "DELETE" });
-  },
-
   onMessage(fn) {
     messageListeners.push(fn);
     return () => {
-      messageListeners = messageListeners.filter((l) => l !== fn);
+      messageListeners = messageListeners.filter((listener) => listener !== fn);
     };
   },
 
   onConnectionChange(fn) {
     stateListeners.push(fn);
     return () => {
-      stateListeners = stateListeners.filter((l) => l !== fn);
+      stateListeners = stateListeners.filter((listener) => listener !== fn);
     };
   },
 };
