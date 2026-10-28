@@ -510,6 +510,14 @@
               <button type="button" class="toggle-btn" :disabled="!practice.isCurrent" @click="practice.stop()">stop</button>
             </div>
 
+            <div class="field">
+              <span class="field-label">Song volume <span x-text="Math.round(practice.songVolume * 100) + '%'"></span></span>
+              <input type="range" class="slider" min="0" max="1" step="0.05" aria-label="Song volume"
+                     :disabled="!practice.available"
+                     :value="practice.songVolume"
+                     @input="practice.setSongVolume($event.target.valueAsNumber)" />
+            </div>
+
             <div class="song-settings">
               <div class="field">
                 <span class="field-label">Count-in beats</span>
@@ -539,13 +547,6 @@
               </div>
             </div>
 
-            <div class="field">
-              <span class="field-label">Song volume <span x-text="Math.round((practice.track?.volume ?? 1) * 100) + '%'"></span></span>
-              <input type="range" class="slider" min="0" max="1" step="0.05" aria-label="Song volume"
-                     :disabled="!practice.track"
-                     :value="practice.track?.volume ?? 1"
-                     @input="practice.setTrackVolume($event.target.valueAsNumber)" />
-            </div>
           </div>
         </template>
       </div>

@@ -22,12 +22,14 @@ ROOT = Path(__file__).resolve().parent.parent
 TRACKS_DIR = ROOT / "tracks"
 WATCH_INTERVAL = 0.1     # seconds between state checks
 TRACKS_EVERY = 10        # check the folder on every 10th, once a second
+JUMP = 0.3               # seconds off from where browsers think a song is
 
 log = logging.getLogger("uvicorn.error")
 
 player = None
 library = None
 _loading = None          # name of the track being decoded to play, if any
+_song_volume = 1.0       # for every song, not just the one playing
 
 
 # --- State -----------------------------------------------------------------
@@ -40,6 +42,7 @@ def state_message():
         "type": "playback",
         "available": True,
         "loading": _loading,
+        "song_volume": _song_volume,
         "metronome": {
             "running": metronome.is_running(),
             "bpm": metronome.bpm,
@@ -49,9 +52,10 @@ def state_message():
         "track": None if track is None else {
             "name": track.name,
             "playing": track.is_playing(),
+            # Started, but still in the count-in: not moving yet.
+            "counting_in": track.is_waiting(player.position),
             "elapsed": round(track.elapsed(), 2),
             "duration": round(track.duration(), 2),
-            "volume": track.volume,
         },
     }
 
@@ -103,7 +107,7 @@ def _metronome(message):
 
 
 async def _track(message):
-    global _loading
+    global _loading, _song_volume
     action = message["action"]
 
     if action == "play":
@@ -116,6 +120,7 @@ async def _track(message):
             track = await asyncio.to_thread(library.get, name)
         finally:
             _loading = None
+        track.volume = _song_volume
         player.play(track, count_in=count_in, first_beat=first_beat)
     elif action == "pause":
         player.pause()
@@ -128,8 +133,9 @@ async def _track(message):
     elif action == "seek":
         player.seek(_number(message, "seconds", 0, 24 * 3600))
     elif action == "volume":
+        _song_volume = _number(message, "value", 0, 1)
         if player.track is not None:
-            player.track.volume = _number(message, "value", 0, 1)
+            player.track.volume = _song_volume
     else:
         raise ValueError(f"Unknown track action {action!r}")
 
@@ -154,14 +160,31 @@ def _without_elapsed(state):
     return {**state, "track": {**track, "elapsed": None}}
 
 
+def _jumped(state, sent, sent_at, now):
+    """True when a playing track is not where the browsers think it is -
+    they count on from the last elapsed they were sent, so a seek or a
+    restart has to be sent even though nothing else changed."""
+    track = state.get("track")
+    before = sent.get("track") if sent else None
+    if not track or not before or not track["playing"] or not before["playing"]:
+        return False
+    # The song does not move during a count-in. When the count-in ends,
+    # counting_in changes, so that is sent anyway.
+    expected = before["elapsed"] + (0 if before["counting_in"] else now - sent_at)
+    return abs(track["elapsed"] - expected) > JUMP
+
+
 async def _watch():
-    last_state = None
+    loop = asyncio.get_running_loop()
+    sent, sent_at = None, 0.0
     last_tracks = None
     checks = 0
     while True:
         state = state_message()
-        if _without_elapsed(state) != last_state:
-            last_state = _without_elapsed(state)
+        now = loop.time()
+        changed = sent is None or _without_elapsed(state) != _without_elapsed(sent)
+        if changed or _jumped(state, sent, sent_at, now):
+            sent, sent_at = state, now
             await browsers.broadcast(state)
 
         if checks % TRACKS_EVERY == 0:

@@ -51,7 +51,8 @@ export function createPracticeStore() {
     available: false,
     loading: null,
     metronome: { running: false, bpm: 120, beats_per_bar: 4, volume: 1 },
-    track: null,          // { name, playing, elapsed, duration, volume } from the server
+    track: null,          // { name, playing, counting_in, elapsed, duration } from the server
+    songVolume: 1,        // for every song, 0..1
     tracks: [],           // [{ name, ready }], newest first
     selected: null,
     uploads: [],          // [{ id, name, progress, error }] in this browser
@@ -77,7 +78,7 @@ export function createPracticeStore() {
     },
     /** Started, but still in the count-in: the song has not moved yet. */
     get countingIn() {
-      return this.track?.playing === true && this.metronome.running;
+      return this.track?.playing === true && this.track.counting_in === true;
     },
     get elapsed() {
       if (!this.isCurrent) return 0;
@@ -180,12 +181,19 @@ export function createPracticeStore() {
     },
 
     seek(seconds) {
-      transport.track("seek", { seconds: clamp(seconds, 0, this.duration) });
+      seconds = clamp(seconds, 0, this.duration);
+      transport.track("seek", { seconds });
+      // Move now rather than wait for the server's word on it, so the
+      // slider does not flick back to the old place in between.
+      if (this.track) {
+        this.track.elapsed = seconds;
+        this.receivedAt = this.now = performance.now();
+      }
     },
 
-    setTrackVolume(value) {
-      if (this.track) this.track.volume = value;
-      this._edited("track_volume");
+    setSongVolume(value) {
+      this.songVolume = value;
+      this._edited("song_volume");
       transport.track("volume", { value });
     },
 
@@ -249,9 +257,8 @@ export function createPracticeStore() {
       for (const [key, value] of Object.entries(message.metronome)) {
         if (!this._recent(key)) this.metronome[key] = value;
       }
-      const track = message.track;
-      if (track && this._recent("track_volume") && this.track) track.volume = this.track.volume;
-      this.track = track;
+      if (!this._recent("song_volume")) this.songVolume = message.song_volume;
+      this.track = message.track;
       this.receivedAt = performance.now();
       this.now = this.receivedAt;
     },

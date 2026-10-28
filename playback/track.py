@@ -79,6 +79,11 @@ class Track:
     def is_playing(self):
         return self._starts_at is not None
 
+    def is_waiting(self, position):
+        """Started, but its first frame is still ahead of stream frame
+        `position` - it is in a count-in."""
+        return self._starts_at is not None and self._starts_at > position
+
     def start(self, at):
         """Play from the current place in the track, beginning at stream
         frame `at` - which can be in the future, for a count-in."""
