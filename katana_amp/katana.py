@@ -96,14 +96,6 @@ def decode_name(raw):
 
 
 class Katana:
-    """A connection to one Katana amplifier.
-
-    Usable as a context manager so the MIDI ports always get closed:
-
-        with Katana() as amp:
-            print(amp.get_parameter(Param.GAIN))    # Param from param.py
-    """
-
     def __init__(self, port_name=None, timeout=1.0, midi_channel=1):
         if port_name is None:
             found = find_ports()
@@ -112,13 +104,10 @@ class Katana:
                     "No Katana MIDI port found. Is the amp powered on and "
                     "connected over USB?"
                 )
-            # find_ports puts the SysEx control port (MIDI 1) first.
             port_name = found[0]
 
         self.port_name = port_name
         self.timeout = timeout
-        # The amp's MIDI receive channel, 0-based. Factory default is CH 1;
-        # it is chosen by holding a CH button while powering on.
         self.midi_channel = midi_channel - 1
         try:
             self._out = mido.open_output(port_name)
