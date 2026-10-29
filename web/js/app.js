@@ -5,6 +5,7 @@
 
 import { createKatanaStore } from "./store.js";
 import { createPracticeStore } from "./practice.js";
+import { createTunerStore, tunerDock } from "./tuner.js";
 import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
@@ -35,12 +36,15 @@ document.addEventListener("alpine:init", () => {
   Alpine.store("katana").init();
   Alpine.store("practice", createPracticeStore());
   Alpine.store("practice").init();
+  Alpine.store("tuner", createTunerStore());
+  Alpine.store("tuner").init();
 
   Alpine.data("knob", knob);
   Alpine.data("ampDial", ampDial);
   Alpine.data("treadle", treadle);
   Alpine.data("eqPad", eqPad);
   Alpine.data("channelRail", channelRail);
+  Alpine.data("tunerDock", tunerDock);
 
   /** The whole desk: layout-level state only. */
   Alpine.data("desk", () => ({

@@ -673,6 +673,107 @@ input {
 .eq-caret { color: var(--muted-foreground); font-size: 0.7rem; }
 .eq-mini { height: 26px; margin-top: 0.25rem; }
 
+/* ---- tuner ---- */
+/* Phone first: a plain section at the bottom of the page, always open.
+   The bottom margin keeps it clear of the EQ pill parked over it. */
+.tuner-anchor { margin: 0.5rem 0 4.5rem; }
+.tuner-dock {
+  border-radius: 6px; border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--panel) 92%, transparent);
+  padding: 0.75rem 1rem 1rem; backdrop-filter: blur(8px);
+}
+/* Above the note: a big letter's box reaches up over the head, and would
+   take the click meant for it. */
+.tuner-head {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  color: inherit; padding: 0; pointer-events: none;
+}
+.tuner-head .eq-caret, .tuner-mini-note { display: none; }
+.tuner-off { margin: 0.5rem 0 0; color: var(--muted-foreground); font-size: 0.8rem; }
+
+.tuner-note {
+  text-align: center; line-height: 1; margin: 0.25rem 0 0.75rem;
+  font-family: var(--font-display); font-size: 4.5rem; font-weight: 700;
+  color: var(--foreground); transition: color 150ms, text-shadow 150ms;
+}
+.tuner-note sub { font-size: 0.35em; font-weight: 400; color: var(--muted-foreground); }
+.tuner-meter { display: flex; align-items: center; gap: 0.75rem; }
+.tuner-sign { font-size: 1.1rem; color: var(--muted-foreground); }
+/* A tick every 10 cents, a tall mark in the middle, and a faint band for
+   the ±3 cents that count as in tune. */
+.tuner-scale {
+  position: relative; flex: 1; height: 2.5rem;
+  border-radius: 4px; border: 1px solid var(--hairline); background:
+    linear-gradient(90deg, transparent 47%, color-mix(in oklab, var(--led-green) 14%, transparent) 47% 53%, transparent 53%),
+    repeating-linear-gradient(90deg, var(--hairline) 0 1px, transparent 1px 10%) 0 50% / 100% 35% no-repeat,
+    var(--panel);
+}
+.tuner-scale::before {
+  content: ""; position: absolute; left: 50%; top: 10%; bottom: 10%; width: 2px;
+  transform: translateX(-50%); background: var(--muted-foreground);
+}
+.tuner-dot {
+  position: absolute; top: 50%; width: 1rem; height: 1rem; border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  background: var(--steel); box-shadow: 0 0 12px var(--steel);
+  /* About one reading's worth, so the dot glides from each to the next. */
+  transition: left 90ms ease-out, opacity 300ms, background 150ms, box-shadow 150ms;
+}
+.tuner-cents {
+  margin-top: 0.5rem; text-align: center; min-height: 1.2em;
+  font-family: var(--font-mono); font-size: 0.85rem; font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.tuner-dock.in-tune .tuner-note { color: var(--led-green); text-shadow: 0 0 24px color-mix(in oklab, var(--led-green) 60%, transparent); }
+.tuner-dock.in-tune .tuner-scale::before { background: var(--led-green); box-shadow: 0 0 10px var(--led-green); }
+.tuner-dock.in-tune .tuner-dot { background: var(--led-green); box-shadow: 0 0 16px var(--led-green); }
+.tuner-dock.in-tune .tuner-cents { color: var(--led-green); }
+.tuner-dock.silent .tuner-dot { opacity: 0.2; }
+.tuner-dock.silent .tuner-note { color: var(--muted-foreground); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tuner-dot, .tuner-note { transition: none; }
+}
+
+/* Wide screen: a bubble beside the EQ pill, that opens up like EQ does. */
+@media (min-width: 1000px) {
+  .tuner-anchor { position: fixed; bottom: 0.75rem; left: calc(0.75rem + 190px + 0.5rem); z-index: 50; margin: 0; }
+  .tuner-dock { width: 190px; padding: 0.375rem 0.5rem; box-shadow: 0 18px 40px oklch(0 0 0 / 60%); }
+  .tuner-head { pointer-events: auto; }
+  .tuner-head .eq-caret { display: inline; }
+
+  /* collapsed: the note and a slim scale, readable at a glance */
+  .tuner-dock.collapsed .tuner-mini-note {
+    display: inline; margin-left: auto;
+    font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700;
+  }
+  .tuner-dock.collapsed.in-tune .tuner-mini-note { color: var(--led-green); }
+  .tuner-dock.collapsed .tuner-note,
+  .tuner-dock.collapsed .tuner-sign,
+  .tuner-dock.collapsed .tuner-cents { display: none; }
+  .tuner-dock.collapsed .tuner-meter { margin-top: 0.375rem; }
+  .tuner-dock.collapsed .tuner-scale { height: 0.75rem; border-radius: 2px; }
+  .tuner-dock.collapsed .tuner-scale::before { top: 0; bottom: 0; width: 1px; }
+  .tuner-dock.collapsed .tuner-dot { width: 0.5rem; height: 0.5rem; }
+  .tuner-dock.collapsed .tuner-off { margin-top: 0.25rem; font-size: 0.6rem; }
+
+  /* open: a centred panel over a dimmed page, like EQ */
+  .tuner-anchor.open {
+    inset: 0; display: grid; place-items: center;
+    background: oklch(0 0 0 / 55%); backdrop-filter: blur(2px); padding: 1rem;
+  }
+  .tuner-anchor.open .tuner-dock { width: min(640px, 92vw); padding: 1rem 1.25rem 1.5rem; }
+  .tuner-anchor.open .tuner-head { margin-bottom: 0.5rem; }
+  .tuner-anchor.open .eq-title { font-size: 0.95rem; }
+  .tuner-anchor.open .tuner-note { font-size: 8rem; margin: 0.5rem 0 1.25rem; }
+  .tuner-anchor.open .tuner-scale { height: 3.5rem; }
+  .tuner-anchor.open .tuner-dot { width: 1.4rem; height: 1.4rem; }
+  .tuner-anchor.open .tuner-sign { font-size: 1.5rem; }
+  .tuner-anchor.open .tuner-cents { font-size: 1.1rem; margin-top: 0.75rem; }
+}
+
 
 /* ---- tabs: amp / practice ---- */
 .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.375rem; flex-shrink: 0; }

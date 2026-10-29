@@ -553,6 +553,37 @@
     </section>
   </div>
 
+  <!-- ---- tuner: always listening. On a wide screen a bubble beside EQ
+       that opens up like it; on a phone a section at the bottom. ---- -->
+  <div class="tuner-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="tunerDock" x-show="tab === 'amp'">
+    <div class="tuner-dock" :class="{ collapsed: !expanded, 'in-tune': $store.tuner.inTune, silent: !$store.tuner.ringing }">
+      <button type="button" class="tuner-head" @click="toggleExpanded()" :aria-expanded="expanded">
+        <span class="eq-title">Tuner</span>
+        <span class="tuner-mini-note" x-text="$store.tuner.ringing ? $store.tuner.note + $store.tuner.octave : '—'"></span>
+        <span class="eq-caret" x-text="expanded ? '▾' : '▸'"></span>
+      </button>
+
+      <template x-if="!$store.tuner.available">
+        <p class="tuner-off">No input from the amp</p>
+      </template>
+      <div class="tuner-body" x-show="$store.tuner.available">
+        <div class="tuner-note">
+          <span x-text="$store.tuner.ringing ? $store.tuner.note : '—'"></span><sub x-text="$store.tuner.ringing ? $store.tuner.octave : ''"></sub>
+        </div>
+        <!-- The dot glides to where the note is: left is flat, right is
+             sharp, the middle mark is in tune. -->
+        <div class="tuner-meter">
+          <span class="tuner-sign">♭</span>
+          <div class="tuner-scale" role="img" :aria-label="$store.tuner.ringing ? `${$store.tuner.note}${$store.tuner.octave}, ${$store.tuner.centsLabel}` : 'No note'">
+            <span class="tuner-dot" :style="`left:${$store.tuner.position}%`"></span>
+          </div>
+          <span class="tuner-sign">♯</span>
+        </div>
+        <div class="tuner-cents" x-text="$store.tuner.centsLabel"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ---- EQ dock: anchored bottom-right, clear of the footswitch row ---- -->
   <div class="eq-anchor" :class="expanded && 'open'" @click.self="toggleExpanded()" x-data="eqPad" x-show="tab === 'amp'">
     <div class="eq-dock" :class="!expanded && 'collapsed'">
