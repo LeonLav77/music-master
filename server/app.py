@@ -5,14 +5,15 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from server import amp, audio, routes, tuner, websocket
+from server import amp, audio, recorder, routes, tuner, websocket
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
-    async with amp.lifespan(app), audio.lifespan(app), tuner.lifespan(app):
+    # The recorder uses what audio and the tuner opened, so it comes last.
+    async with amp.lifespan(app), audio.lifespan(app), tuner.lifespan(app), recorder.lifespan(app):
         yield
 
 

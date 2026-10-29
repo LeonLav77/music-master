@@ -73,6 +73,11 @@ class Capture:
         self.close()
         return False
 
+    def latency(self):
+        """Seconds from the sound reaching the card to the block holding it
+        being handed over: the card's buffer."""
+        return self._stream.latency
+
     # --- listeners: safe from any thread -----------------------------------
 
     def listen(self):

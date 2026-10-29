@@ -110,3 +110,6 @@ desktop.ini
 # Audio the deck plays: local files you dropped in and anything
 # fetched from YouTube. Large, and not ours to redistribute.
 tracks/
+
+# Takes the recorder saved: large WAVs, yours rather than the code's.
+recordings/

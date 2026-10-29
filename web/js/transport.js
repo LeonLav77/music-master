@@ -175,6 +175,20 @@ export const transport = {
     return request(`/api/tracks/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 
+  /** Start or stop a take. */
+  recorder(action) {
+    sendMessage({ type: "recorder", action });
+  },
+
+  /** Where a take's WAV is: to play, or with `download` to save. */
+  recordingUrl(name, download = false) {
+    return `${BASE}/api/recordings/${encodeURIComponent(name)}${download ? "?download=1" : ""}`;
+  },
+
+  async deleteRecording(name) {
+    return request(`/api/recordings/${encodeURIComponent(name)}`, { method: "DELETE" });
+  },
+
   /** Channel list and the names of the stored patches. */
   async channels() {
     return request("/api/channels");
