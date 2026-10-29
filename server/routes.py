@@ -8,15 +8,17 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from capture import RecorderError
 from katana_amp import katana
 from katana_amp import tsl
 from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
 from playback import TrackError
 from playback.library import check_name
-from server import amp, audio, browsers
+from server import amp, audio, browsers, recorder
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
@@ -144,6 +146,37 @@ async def delete_track(filename: str):
 async def playback():
     """What the metronome and the track are doing right now."""
     return audio.state_message()
+
+
+# --- Recordings --------------------------------------------------------------
+
+@router.get("/api/recordings")
+async def recordings():
+    """The finished takes in recordings/, newest first."""
+    return recorder.recordings_message()["recordings"]
+
+
+@router.get("/api/recordings/{filename}")
+async def recording(filename: str, download: bool = False):
+    """A take's WAV: to play in the browser, or with ?download=1 to save."""
+    try:
+        path = recorder.existing(filename)
+    except RecorderError as exc:
+        raise HTTPException(404, str(exc))
+    return FileResponse(path, media_type="audio/wav",
+                        content_disposition_type="attachment" if download else "inline",
+                        filename=filename)
+
+
+@router.delete("/api/recordings/{filename}")
+async def delete_recording(filename: str):
+    """Delete a take."""
+    try:
+        recorder.remove(filename)
+    except RecorderError as exc:
+        raise HTTPException(404, str(exc))
+    await browsers.broadcast(recorder.recordings_message())
+    return {"deleted": filename}
 
 
 # --- Footswitch messages ---------------------------------------------------

@@ -6,6 +6,7 @@
 import { createKatanaStore } from "./store.js";
 import { createPracticeStore } from "./practice.js";
 import { createTunerStore, tunerDock } from "./tuner.js";
+import { createRecorderStore } from "./recorder.js";
 import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
@@ -38,6 +39,8 @@ document.addEventListener("alpine:init", () => {
   Alpine.store("practice").init();
   Alpine.store("tuner", createTunerStore());
   Alpine.store("tuner").init();
+  Alpine.store("recorder", createRecorderStore());
+  Alpine.store("recorder").init();
 
   Alpine.data("knob", knob);
   Alpine.data("ampDial", ampDial);

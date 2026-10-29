@@ -50,6 +50,7 @@ class Player:
         self.position = 0     # frames sent to the card since the stream opened
         self.underruns = 0    # blocks we were too late to fill
         self._actions = queue.SimpleQueue()
+        self._listeners = []
 
         try:
             self._stream = sounddevice.OutputStream(
@@ -79,6 +80,22 @@ class Player:
     def __exit__(self, *exc_info):
         self.close()
         return False
+
+    def latency(self):
+        """Seconds from filling a block to hearing it: the card's buffer."""
+        return self._stream.latency
+
+    # --- listeners: safe from any thread -----------------------------------
+
+    def listen(self):
+        """A new queue that gets every block sent to the jack from now on,
+        as (position, frames) - what the recorder adds to a take."""
+        sent = queue.SimpleQueue()
+        self._listeners = self._listeners + [sent]
+        return sent
+
+    def stop_listening(self, sent):
+        self._listeners = [listener for listener in self._listeners if listener is not sent]
 
     # --- actions: safe from any thread -------------------------------------
 
@@ -134,4 +151,6 @@ class Player:
             self.track.render(out, self.position)
         self.metronome.render(out, self.position)
         numpy.clip(out, -1.0, 1.0, out=out)
+        for listener in self._listeners:
+            listener.put((self.position, out.copy()))
         self.position += frames

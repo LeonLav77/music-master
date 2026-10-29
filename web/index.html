@@ -410,7 +410,7 @@
 
       <!-- backing tracks: also the drop zone for new songs. dragenter and
            dragleave fire for every child crossed, so count them. -->
-      <div class="practice-plate amp-plate" x-data="{ dragDepth: 0 }"
+      <div class="practice-plate amp-plate tracks-plate" x-data="{ dragDepth: 0 }"
            :class="dragDepth > 0 && 'dropping'"
            @dragenter.prevent="dragDepth++"
            @dragover.prevent
@@ -547,6 +547,80 @@
               </div>
             </div>
 
+          </div>
+        </template>
+      </div>
+
+      <!-- recorder: what you hear - the amp, and the song or clicks the Pi
+           sends to AUX - into one take -->
+      <div class="practice-plate amp-plate recorder-plate" x-data="{ get rec() { return $store.recorder; } }">
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;top:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="left:.375rem;bottom:.375rem"></span>
+        <span aria-hidden="true" class="screw hardware-screw" style="right:.375rem;bottom:.375rem"></span>
+
+        <div class="practice-head">
+          <h2 class="practice-title engrave">Recorder</h2>
+          <span class="track-status" x-text="rec.status"></span>
+        </div>
+
+        <template x-if="!rec.available">
+          <p class="practice-empty">No input from the amp: is it on and plugged in?</p>
+        </template>
+
+        <div class="rec-controls" x-show="rec.available">
+          <button type="button" class="rec-button" :class="rec.recording && 'on'" :disabled="rec.saving"
+                  :aria-label="rec.recording ? 'Stop recording' : 'Start recording'"
+                  @click="rec.toggle()"><span class="rec-icon"></span></button>
+          <span class="rec-time" x-text="rec.clock(rec.time)"></span>
+          <!-- The loudest moment of the take so far: red if it clipped. -->
+          <div class="rec-meter" :class="rec.clipped && 'clipped'" role="img"
+               :aria-label="`Peak ${rec.peakLabel}`">
+            <div :style="`width:${rec.meter * 100}%`"></div>
+          </div>
+          <span class="rec-peak" :class="rec.clipped && 'clipped'" x-text="rec.peakLabel"></span>
+        </div>
+        <p class="rec-warning" x-show="rec.clipped">Clipped: the amp's sound reached full scale, so the loudest moments are cut off.</p>
+        <p class="rec-warning" x-show="rec.error" x-text="rec.error"></p>
+
+        <p class="practice-empty" x-show="rec.available && !rec.takes.length">
+          No takes yet. Press record and play. A song playing in Backing tracks goes into the take too.
+        </p>
+
+        <div class="track-list">
+          <template x-for="take in rec.takes" :key="take.name">
+            <div class="track-row-wrap">
+              <button type="button" class="rail-btn track-row" :class="rec.selected === take.name && 'active'"
+                      @click="rec.select(take.name)">
+                <span class="rail-name">
+                  <span x-text="rec.describe(take.name).when"></span>
+                  <span class="take-song" x-show="rec.describe(take.name).song" x-text="rec.describe(take.name).song"></span>
+                </span>
+                <span class="rail-bank" x-text="take.seconds === null ? '' : rec.clock(take.seconds)"></span>
+              </button>
+              <button type="button" class="track-delete" :aria-label="'Delete take ' + rec.describe(take.name).when"
+                      @click="rec.askDelete(take.name)">×</button>
+            </div>
+          </template>
+        </div>
+
+        <template x-if="rec.selected">
+          <div class="take-panel">
+            <audio controls preload="metadata" :src="rec.url(rec.selected)"></audio>
+            <a class="chip" :href="rec.url(rec.selected, true)" download>download</a>
+          </div>
+        </template>
+
+        <template x-if="rec.pendingDelete">
+          <div class="overlay center" @click.self="rec.pendingDelete = null">
+            <div class="confirm" role="alertdialog" aria-modal="true">
+              <h2>Delete the take from <span x-text="rec.describe(rec.pendingDelete).when"></span>?</h2>
+              <p>This removes the recording from the Pi for good.</p>
+              <div class="confirm-actions">
+                <button type="button" class="btn" @click="rec.pendingDelete = null">Cancel</button>
+                <button type="button" class="btn btn-danger" @click="rec.confirmDelete()">Delete</button>
+              </div>
+            </div>
           </div>
         </template>
       </div>
