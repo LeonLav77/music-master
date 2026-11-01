@@ -2,7 +2,8 @@
 
 Both open in the lifespan. If the headphone jack cannot be opened the rest
 of the server still runs - the amp does not need it - and playback
-messages get an error back.
+messages get an error back. hotplug.py closes and reopens the player when
+the amp is switched on or off.
 
 Actions are queued to the audio thread and take effect on its next block,
 so nothing here broadcasts straight after one. _watch() is the only sender
@@ -196,14 +197,38 @@ async def _watch():
         await asyncio.sleep(WATCH_INTERVAL)
 
 
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    global player, library
-    library = Library(TRACKS_DIR)
+async def open_player(metronome=None):
+    """Open the headphone jack. With `metronome`, the new player keeps that
+    one's tempo and volume."""
+    global player
     try:
-        player = Player()
+        opened = await asyncio.to_thread(Player)
     except PlaybackError as exc:
         log.warning("Playback disabled: %s", exc)
+        return
+    if metronome is not None:
+        opened.metronome = metronome
+    player = opened
+
+
+async def close_player():
+    """Close the headphone jack. Returns its metronome, stopped, to hand to
+    the next open_player() - or None if there was no player."""
+    global player
+    closing, player = player, None
+    if closing is None:
+        return None
+    await asyncio.to_thread(closing.close)
+    # The audio thread is gone now, so stopping it here is safe.
+    closing.metronome.stop()
+    return closing.metronome
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    global library
+    library = Library(TRACKS_DIR)
+    await open_player()
 
     task = asyncio.create_task(_watch())
     try:
@@ -212,6 +237,5 @@ async def lifespan(app):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        if player is not None:
-            player.close()
+        await close_player()
         library.close()
