@@ -1,0 +1,30 @@
+# The boot logo: the badge from the top of the page, centred on the
+# page's background colour, with the bulb's glow flickering like the
+# page's .tube-flicker.
+#
+# logo.png and glow.png are the same size, so drawing both at the same
+# spot puts the glow behind the bulb.
+
+Window.SetBackgroundTopColor(0.012, 0.016, 0.024);      # --background
+Window.SetBackgroundBottomColor(0.012, 0.016, 0.024);
+
+logo.image = Image("logo.png");
+glow.image = Image("glow.png");
+
+left = Window.GetX() + Window.GetWidth() / 2 - logo.image.GetWidth() / 2;
+top = Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2;
+
+glow.sprite = Sprite(glow.image);
+glow.sprite.SetPosition(left, top, 0);
+
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetPosition(left, top, 1);
+
+# Called 50 times a second. Two slow waves of different lengths, so the
+# flicker never visibly repeats.
+global.frame = 0;
+fun flicker() {
+    global.frame = global.frame + 1;
+    glow.sprite.SetOpacity(0.75 + 0.15 * Math.Sin(global.frame / 40) + 0.08 * Math.Sin(global.frame / 7));
+}
+Plymouth.SetRefreshFunction(flicker);

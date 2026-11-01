@@ -15,6 +15,13 @@ import {
   GATE_PARAMS, delayParams, knobParams, enumParams, toggleParams,
 } from "./blocks.js";
 
+// The Pi's own touch screen opens the page as /?kiosk (deploy/kiosk-browser).
+// There a long press must not open a menu - see .kiosk in app.css too.
+if (new URLSearchParams(location.search).has("kiosk")) {
+  document.documentElement.classList.add("kiosk");
+  document.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
 /** The six pedal tiles on the board. */
 function buildBlocks(amp) {
   return [

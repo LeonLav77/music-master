@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# The browser the kiosk runs inside cage: Chromium showing the control
+# surface and nothing of itself.
+
+# How big the page is drawn. 1 is the screen's own size; below 1 shrinks
+# everything, which gives the page more room - 0.8 turns a 1024px-wide
+# screen into 1280 CSS pixels. The PC layout starts at 1000.
+SCALE=1
+
+exec /usr/bin/chromium \
+  --ozone-platform=wayland \
+  --kiosk \
+  --force-device-scale-factor="$SCALE" \
+  --incognito \
+  --no-first-run \
+  --noerrdialogs \
+  --disable-session-crashed-bubble \
+  --disable-infobars \
+  --disable-pinch \
+  --overscroll-history-navigation=0 \
+  --disable-features=Translate \
+  --password-store=basic \
+  --check-for-update-interval=31536000 \
+  "http://localhost:8000/?kiosk"

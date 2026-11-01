@@ -1,0 +1,44 @@
+# The control surface, fullscreen on the Pi's own screen - and nothing else.
+#
+# cage owns the screen and the touch panel and runs exactly one program,
+# the browser. There is no desktop behind it: if the browser dies, cage
+# exits, and systemd starts both again.
+
+[Unit]
+Description=Kiosk: the control surface fullscreen on the Pi's screen
+Wants=music-master.service
+After=music-master.service systemd-user-sessions.service plymouth-start.service
+# Plymouth's own "boot is done, remove the logo" waits for us, so the
+# logo stays up until the page is ready to replace it.
+Before=plymouth-quit.service
+# Keep retrying however long the server takes; never give up.
+StartLimitIntervalSec=0
+
+[Service]
+User=leon
+# A login session on tty1, which is what lets cage open the screen and the
+# touch panel as leon rather than as root.
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty-fail
+TTYReset=yes
+TTYVHangup=yes
+UtmpIdentifier=tty1
+UtmpMode=user
+
+# No screen plugged in at boot: skip the kiosk entirely, so a browser
+# with nowhere to draw does not take CPU from the audio.
+ExecCondition=/bin/sh -c 'grep -qx connected /sys/class/drm/card*-HDMI-*/status'
+# Wait until the server answers, with the logo still on screen...
+ExecStartPre=/bin/sh -c 'until curl -sf -o /dev/null http://localhost:8000/api/status; do sleep 0.5; done'
+# ...then hand the screen over, leaving the logo's last frame behind
+# until the browser draws over it. The - means "fine if Plymouth is gone".
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
+ExecStart=/usr/bin/cage -d -- /bin/bash /home/leon/katana/deploy/kiosk-browser
+
+Restart=always
+RestartSec=2
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
