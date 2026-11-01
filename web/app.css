@@ -959,3 +959,9 @@ input {
   background: var(--panel); color: var(--muted-foreground); font-size: 1.1rem; line-height: 1;
 }
 .track-delete:hover { border-color: var(--ember); color: var(--ember); }
+
+/* The Pi's touch screen (html.kiosk, set in app.js): a finger, not a mouse.
+   No cursor, and holding or dragging a control never selects text. */
+.kiosk, .kiosk * { cursor: none !important; }
+.kiosk body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.kiosk input, .kiosk textarea { user-select: text; -webkit-user-select: text; }

@@ -1,0 +1,15 @@
+[Unit]
+Description=Music Master server (amp API + web page on :8000)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=leon
+WorkingDirectory=/home/leon/katana
+ExecStart=/home/leon/katana/run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

@@ -22,6 +22,7 @@ web/               the control surface - plain HTML, CSS and JS, no build step
 docs/
   CONTROLS.md      every parameter the amp exposes, with ranges
   TSL_FORMAT.md    the .tsl patch file format, reverse-engineered
+deploy/            the Pi as a kiosk: services, boot logo, install.sh - see deploy/README.md
 run                start the server
 requirements.txt   Python dependencies
 ```
