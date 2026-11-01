@@ -1,8 +1,9 @@
 """The recorder: takes of what you hear, saved in recordings/.
 
 Uses the amp input the tuner opened and the player audio.py opened, so it
-starts after both. Without the amp input there is no recorder; without
-the player, takes are just the amp.
+starts after both - and hotplug.py closes it first and opens it last
+when it reopens those. Without the amp input there is no recorder;
+without the player, takes are just the amp.
 
 A take is named after the moment it started, plus the song that was
 playing when it stopped: "2026-10-29 16-05-32 seek and destroy.wav".
@@ -117,7 +118,9 @@ def _song_name():
 
 async def _stop():
     global _saving
-    if not recorder.is_recording():
+    # _saving: a stop already under way - from another browser, or from
+    # the amp being switched off.
+    if not recorder.is_recording() or _saving:
         return
     song = _song_name()
     _saving = True
@@ -147,18 +150,31 @@ async def _watch():
         await asyncio.sleep(WATCH_INTERVAL)
 
 
+def open_recorder():
+    global recorder
+    if tuner.capture is not None:
+        recorder = Recorder(tuner.capture, audio.player)
+    else:
+        log.warning("Recorder disabled: no input from the amp")
+
+
+async def close_recorder():
+    """Finish a take in progress - saved like any other - and let go of
+    the amp input and the player."""
+    global recorder
+    if recorder is not None:
+        await _stop()
+    recorder = None
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app):
-    global recorder
     RECORDINGS_DIR.mkdir(exist_ok=True)
     # Left behind by a server that stopped mid-take: the take itself plays
     # (its header is kept up to date), its AUX part cannot be mixed in now.
     for leftover in [*RECORDINGS_DIR.glob("*.aux"), *RECORDINGS_DIR.glob("*.mixed.wav")]:
         leftover.unlink()
-    if tuner.capture is not None:
-        recorder = Recorder(tuner.capture, audio.player)
-    else:
-        log.warning("Recorder disabled: no input from the amp")
+    open_recorder()
 
     task = asyncio.create_task(_watch())
     try:
@@ -167,5 +183,4 @@ async def lifespan(app):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        if recorder is not None and recorder.is_recording():
-            recorder.stop()
+        await close_recorder()

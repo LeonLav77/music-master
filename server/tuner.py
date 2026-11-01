@@ -1,7 +1,8 @@
 """The tuner: always listening to the dry guitar while the server runs.
 
-Opened in the lifespan. If the amp's USB input cannot be opened the rest
-of the server still runs, and the page shows the tuner as unavailable.
+Opened in the lifespan, and again by hotplug.py whenever the amp is
+switched on. If the amp's USB input cannot be opened the rest of the
+server still runs, and the page shows the tuner as unavailable.
 
 The Tuner thread updates its reading about 14 times a second. _watch()
 looks just as often and broadcasts when the reading changed - so while
@@ -44,14 +45,36 @@ async def _watch():
         await asyncio.sleep(WATCH_INTERVAL)
 
 
-@contextlib.asynccontextmanager
-async def lifespan(app):
+def _open_both():
+    opened = Capture()
+    return opened, Tuner(opened)
+
+
+async def open_input():
+    """Open the amp's USB input and start the tuner on it."""
     global capture, tuner
     try:
-        capture = Capture()
-        tuner = Tuner(capture)
+        # Opening the card takes a moment, so off the event loop. The
+        # globals are only set back here, all at once: nothing on the
+        # event loop ever sees a capture without its tuner.
+        capture, tuner = await asyncio.to_thread(_open_both)
     except CaptureError as exc:
         log.warning("Tuner disabled: %s", exc)
+
+
+async def close_input():
+    global capture, tuner
+    closing_capture, closing_tuner = capture, tuner
+    capture = tuner = None
+    if closing_tuner is not None:
+        await asyncio.to_thread(closing_tuner.close)
+    if closing_capture is not None:
+        await asyncio.to_thread(closing_capture.close)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    await open_input()
 
     task = asyncio.create_task(_watch())
     try:
@@ -60,7 +83,4 @@ async def lifespan(app):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        if tuner is not None:
-            tuner.close()
-        if capture is not None:
-            capture.close()
+        await close_input()
