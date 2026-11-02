@@ -56,9 +56,9 @@ grep -qx 'disable_splash=1' "$BOOT/config.txt" || printf '\n[all]\ndisable_splas
 
 # Upali potrebne servise
 step "Services: the server, and the kiosk on the screen"
-install -m 644 "$DEPLOY/music-master.service" "$DEPLOY/kiosk.service" /etc/systemd/system/
+install -m 644 "$DEPLOY/music-master.service" "$DEPLOY/kiosk-ready.service" "$DEPLOY/kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable music-master.service kiosk.service
+systemctl enable music-master.service kiosk-ready.service kiosk.service
 # Pi pokusava pokazati sign up screen na tty1 ali mi zelimo prikazati kiosk
 systemctl disable getty@tty1.service
 
