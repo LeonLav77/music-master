@@ -25,15 +25,16 @@ firmware ......... rainbow square        hidden: disable_splash=1 in config.txt
 kernel ........... text and raspberries  hidden: quiet, logo.nologo, console=tty3
 Plymouth ......... the Katana logo       plymouth/katana/
 music-master ..... the server starts     music-master.service
-kiosk ............ waits for :8000,      kiosk.service
-                   quits Plymouth, starts
-                   cage + Chromium       kiosk-browser
+kiosk-ready ...... waits for :8000,      kiosk-ready.service
+                   quits Plymouth
+kiosk ............ cage + Chromium       kiosk.service, kiosk-browser
 ```
 
 | File | What it is |
 | --- | --- |
 | `install.sh` | Installs the packages, the logo, the boot settings and both services |
 | `music-master.service` | The server, on boot - the same `./run` as by hand |
+| `kiosk-ready.service` | Holds the logo up until the server answers, then quits Plymouth (as root - see below) |
 | `kiosk.service` | cage on tty1, the Pi's own screen. Skipped when no screen is plugged in |
 | `kiosk-browser` | Chromium with every bit of browser switched off. `SCALE` sets the page size |
 | `plymouth/katana/` | The boot logo: theme file, script, `logo.png` and the flickering `glow.png` |
@@ -43,10 +44,13 @@ touch panel - that runs exactly one app, fullscreen. There is nothing behind
 it to fall back to: if Chromium closes, cage closes, and systemd starts them
 again two seconds later.
 
-**The logo stays up until the page is ready.** `kiosk.service` is ordered
-before `plymouth-quit.service`, waits for the server to answer, and then
-quits Plymouth with `--retain-splash`, which leaves the logo on screen until
-Chromium draws over it.
+**The logo stays up until the page is ready.** `kiosk-ready.service` is
+ordered before `plymouth-quit.service` and `kiosk.service`, waits for the
+server to answer, and then quits Plymouth with `--retain-splash`, which
+leaves the logo on screen until Chromium draws over it. It is a separate
+unit because Plymouth only listens to root: run from `kiosk.service` (as
+leon, on tty1) `plymouth quit` hangs, and the screen stays black until the
+start times out two minutes later.
 
 **The page knows it is the kiosk** by the `?kiosk` in its URL: `app.js` adds
 `.kiosk` to `<html>`, and `app.css` hides the cursor and turns off text

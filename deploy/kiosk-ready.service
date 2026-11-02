@@ -1,0 +1,28 @@
+# Keeps the Katana logo on screen until the server answers, then hands the
+# screen to kiosk.service.
+#
+# This is its own unit, apart from kiosk.service, because talking to
+# Plymouth needs root and no terminal: as leon, on tty1, "plymouth quit"
+# never returns and the kiosk sits on a black screen until it times out.
+
+[Unit]
+Description=Kiosk: hold the boot logo until the server is ready
+Wants=music-master.service
+After=music-master.service plymouth-start.service
+# Plymouth's own "boot is done, remove the logo" waits for us, and so
+# does the kiosk.
+Before=plymouth-quit.service kiosk.service
+
+[Service]
+Type=oneshot
+# No screen plugged in at boot: nothing to hold the logo up for.
+ExecCondition=/bin/sh -c 'grep -qx connected /sys/class/drm/card*-HDMI-*/status'
+# Wait until the server answers, with the logo still on screen...
+ExecStart=/bin/sh -c 'until curl -sf -o /dev/null http://localhost:8000/api/status; do sleep 0.5; done'
+# ...then quit Plymouth, leaving the logo's last frame behind until the
+# browser draws over it. The - means "fine if Plymouth is gone".
+ExecStart=-/usr/bin/plymouth quit --retain-splash
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
