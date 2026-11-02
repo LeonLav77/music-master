@@ -28,6 +28,8 @@ you opened it at, with no configuration and no CORS.
 | `js/controls.js` | Pointer drag, knob geometry, EQ curve maths. |
 | `js/components.js` | `x-data` factories for knob, dial, treadle, EQ, rail. |
 | `js/blocks.js` | Which parameters each editor panel shows. |
+| `js/wifi.js` | Wi-Fi store: shows the hotspot button while the Pi is its own hotspot. |
+| `wifi/index.html`, `js/wifi-page.js` | The hidden `/wifi` page: saved networks, forget, add. |
 | `js/app.js` | Registers everything on `alpine:init`, then loads Alpine. |
 
 ## The schema

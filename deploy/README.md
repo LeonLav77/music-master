@@ -32,10 +32,11 @@ kiosk ............ cage + Chromium       kiosk.service, kiosk-browser
 
 | File | What it is |
 | --- | --- |
-| `install.sh` | Installs the packages, the logo, the boot settings and both services |
+| `install.sh` | Installs the packages, the logo, the boot settings, both services and the Wi-Fi rule |
 | `music-master.service` | The server, on boot - the same `./run` as by hand |
 | `kiosk-ready.service` | Holds the logo up until the server answers, then quits Plymouth (as root - see below) |
 | `kiosk.service` | cage on tty1, the Pi's own screen. Skipped when no screen is plugged in |
+| `wifi.rules` | polkit: lets the server change Wi-Fi - saved networks and the hotspot |
 | `kiosk-browser` | Chromium with every bit of browser switched off. `SCALE` sets the page size |
 | `plymouth/katana/` | The boot logo: theme file, script, `logo.png` and the flickering `glow.png` |
 
@@ -55,6 +56,30 @@ start times out two minutes later.
 **The page knows it is the kiosk** by the `?kiosk` in its URL: `app.js` adds
 `.kiosk` to `<html>`, and `app.css` hides the cursor and turns off text
 selection and the long-press menu. A phone gets none of that.
+
+## No Wi-Fi: the Pi becomes a hotspot
+
+If wlan0 has no network for 2 minutes, the server turns on an open hotspot
+called **Katana**. Join it from a phone and open `http://10.42.0.1:8000`.
+The page then shows a **hotspot** button in the top bar. Pressing it leaves
+the hotspot, tries every saved network in range, and goes back to the
+hotspot if none of them answers. The phone loses the hotspot while it tries.
+
+The Pi 4 has one Wi-Fi radio, so while it is the hotspot it cannot notice
+the home network coming back. It stays the hotspot until the button is
+pressed or the Pi reboots. At boot the hotspot is off and the saved networks
+are tried first.
+
+**`/wifi`** is a page with no link to it. It lists the saved networks, can
+forget them, and can add new ones. That is how you teach the Pi a new
+network while it is the hotspot.
+
+All of it is `server/wifi.py` driving NetworkManager through `nmcli`.
+`wifi.rules`, installed by `install.sh` into `/etc/polkit-1/rules.d/`, is what
+allows that. Without it NetworkManager refuses changes from a service that
+has no desktop session. AP mode also needs the Wi-Fi country set
+(`sudo raspi-config`, Localisation, WLAN Country), and `install.sh` warns if
+it isn't.
 
 ## Changing things
 

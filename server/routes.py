@@ -18,7 +18,7 @@ from katana_amp.katana import CHANNELS, Katana, KatanaError
 from katana_amp.param import Param
 from playback import TrackError
 from playback.library import check_name
-from server import amp, audio, browsers, recorder
+from server import amp, audio, browsers, recorder, wifi
 
 # Tone Studio patch files live here, next to the project root.
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,6 +32,11 @@ SCHEMA = Param.schema()
 
 class Value(BaseModel):
     value: int
+
+
+class Network(BaseModel):
+    ssid: str
+    password: str = ""
 
 
 # --- Schema and state ------------------------------------------------------
@@ -177,6 +182,58 @@ async def delete_recording(filename: str):
         raise HTTPException(404, str(exc))
     await browsers.broadcast(recorder.recordings_message())
     return {"deleted": filename}
+
+
+# --- Wi-Fi --------------------------------------------------------------------
+# For the hidden /wifi page, and the Wi-Fi button that shows while the Pi
+# is its own hotspot.
+
+def _wifi_available():
+    if not wifi.available:
+        raise HTTPException(503, "No Wi-Fi control on this machine")
+
+
+@router.get("/api/wifi")
+async def wifi_networks():
+    """The Wi-Fi state, the saved networks and the ones in range."""
+    _wifi_available()
+    try:
+        return {**wifi.state_message(), "saved": await wifi.saved(), "nearby": await wifi.nearby()}
+    except wifi.WifiError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@router.post("/api/wifi")
+async def add_wifi(body: Network):
+    """Save a network, or give a saved one a new password."""
+    _wifi_available()
+    try:
+        await wifi.add(body.ssid, body.password)
+    except wifi.WifiError as exc:
+        raise HTTPException(422, str(exc))
+    return {"saved": body.ssid}
+
+
+@router.delete("/api/wifi/{uuid}")
+async def forget_wifi(uuid: str):
+    """Forget a saved network."""
+    _wifi_available()
+    try:
+        await wifi.forget(uuid)
+    except wifi.WifiError as exc:
+        raise HTTPException(404, str(exc))
+    return {"forgotten": uuid}
+
+
+@router.post("/api/wifi/connect")
+async def connect_wifi():
+    """Leave the hotspot and try the saved networks. Answers at once; how
+    it went comes as "wifi" messages over the WebSocket."""
+    try:
+        wifi.connect()
+    except wifi.WifiError as exc:
+        raise HTTPException(409, str(exc))
+    return {"trying": True}
 
 
 # --- Footswitch messages ---------------------------------------------------
