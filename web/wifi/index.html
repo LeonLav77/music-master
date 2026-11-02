@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Katana Wi-Fi</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="/app.css" />
+<!-- The module registers the page on alpine:init; module and defer scripts
+     run in document order, so it is listening before Alpine starts. -->
+<script type="module" src="/js/wifi-page.js"></script>
+<script defer src="/vendor/alpine.min.js"></script>
+</head>
+
+<!-- Hidden settings page: nothing on the surface links here. -->
+<body>
+<main class="wifi-page" x-data="wifiPage" x-cloak>
+
+  <section class="practice-plate amp-plate">
+    <div class="practice-head">
+      <h1 class="practice-title engrave">Wi-Fi</h1>
+      <a class="chip" href="/">back</a>
+    </div>
+    <p class="practice-empty" x-show="loading">Reading the networks…</p>
+    <p class="practice-empty" x-show="state" x-text="status"></p>
+    <p class="practice-banner" x-show="error" x-text="error"></p>
+  </section>
+
+  <section class="practice-plate amp-plate" x-show="state">
+    <h2 class="practice-title engrave">Saved networks</h2>
+    <p class="practice-empty" x-show="saved.length === 0">None yet. Add one below.</p>
+    <div class="track-list">
+      <template x-for="network in saved" :key="network.uuid">
+        <div class="track-row-wrap">
+          <div class="rail-btn track-row" :class="network.active && 'active'">
+            <span class="rail-name" x-text="network.ssid"></span>
+            <span class="rail-bank" x-text="network.active ? 'connected' : 'saved'"></span>
+          </div>
+          <button type="button" class="track-delete" :aria-label="'Forget ' + network.ssid"
+                  @click="pendingForget = network">×</button>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="practice-plate amp-plate" x-show="state">
+    <h2 class="practice-title engrave">Add a network</h2>
+    <form class="wifi-form" @submit.prevent="add()">
+      <label class="field">
+        <span class="field-label">Name</span>
+        <!-- The networks in range as suggestions; any name can be typed,
+             for one that is out of range or hidden. -->
+        <input class="number-input" list="wifi-nearby" x-model="ssid" maxlength="32"
+               autocomplete="off" autocapitalize="off" spellcheck="false" required />
+        <datalist id="wifi-nearby">
+          <template x-for="name in nearby" :key="name"><option :value="name"></option></template>
+        </datalist>
+      </label>
+      <label class="field">
+        <span class="field-label">Password - empty for an open network</span>
+        <div class="number-row">
+          <input class="number-input" :type="showPassword ? 'text' : 'password'" x-model="password"
+                 maxlength="63" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          <button type="button" class="btn" @click="showPassword = !showPassword"
+                  x-text="showPassword ? 'hide' : 'show'"></button>
+        </div>
+        <span class="upload-error" x-show="passwordProblem" x-text="passwordProblem"></span>
+      </label>
+      <div class="practice-actions">
+        <button type="submit" class="toggle-btn" :disabled="saving || !ssid.trim() || passwordProblem"
+                x-text="saving ? 'saving…' : 'save'"></button>
+      </div>
+    </form>
+  </section>
+
+  <template x-if="pendingForget">
+    <div class="overlay center" @click.self="pendingForget = null">
+      <div class="confirm" role="alertdialog" aria-modal="true">
+        <h2>Forget <span x-text="pendingForget.ssid"></span>?</h2>
+        <p x-show="pendingForget.active">The Pi is on this network now. Forgetting it disconnects the Pi, and this page with it.</p>
+        <p x-show="!pendingForget.active">The Pi will no longer join it. Add it again to get it back.</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn" @click="pendingForget = null">Cancel</button>
+          <button type="button" class="btn btn-danger" @click="confirmForget()">Forget</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+</main>
+</body>
+</html>

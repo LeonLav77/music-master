@@ -189,6 +189,25 @@ export const transport = {
     return request(`/api/recordings/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 
+  /** Wi-Fi: the state, the saved networks and the ones in range. */
+  async wifi() {
+    return request("/api/wifi");
+  },
+
+  /** Save a network. An empty password is an open network. */
+  async addWifi(ssid, password) {
+    return request("/api/wifi", { method: "POST", body: JSON.stringify({ ssid, password }) });
+  },
+
+  async forgetWifi(uuid) {
+    return request(`/api/wifi/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+  },
+
+  /** Leave the hotspot and try the saved networks. */
+  async connectWifi() {
+    return request("/api/wifi/connect", { method: "POST" });
+  },
+
   /** Channel list and the names of the stored patches. */
   async channels() {
     return request("/api/channels");

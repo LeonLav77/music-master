@@ -63,5 +63,14 @@ systemctl enable music-master.service kiosk-ready.service kiosk.service
 systemctl disable getty@tty1.service
 
 
+# Server smije mijenjati Wi-Fi (spremljene mreze, hotspot)
+step "Wi-Fi: let the server save networks and turn the hotspot on"
+install -m 644 "$DEPLOY/wifi.rules" /etc/polkit-1/rules.d/50-music-master-wifi.rules
+# Bez drzave hotspot se ne pali - samo upozori, ne mijenjaj sam
+if [[ -z "$(iw reg get 2>/dev/null | grep -m1 -o 'country [A-Z][A-Z]' | grep -v '00')" ]]; then
+  echo "    No Wi-Fi country set - the hotspot may not start. Set it: sudo raspi-config, Localisation, WLAN Country"
+fi
+
+
 echo
 echo "Done. Reboot with the screen plugged in to see it: sudo reboot"

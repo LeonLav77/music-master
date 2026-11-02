@@ -7,6 +7,7 @@ import { createKatanaStore } from "./store.js";
 import { createPracticeStore } from "./practice.js";
 import { createTunerStore, tunerDock } from "./tuner.js";
 import { createRecorderStore } from "./recorder.js";
+import { createWifiStore } from "./wifi.js";
 import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
@@ -48,6 +49,8 @@ document.addEventListener("alpine:init", () => {
   Alpine.store("tuner").init();
   Alpine.store("recorder", createRecorderStore());
   Alpine.store("recorder").init();
+  Alpine.store("wifi", createWifiStore());
+  Alpine.store("wifi").init();
 
   Alpine.data("knob", knob);
   Alpine.data("ampDial", ampDial);
@@ -79,6 +82,7 @@ document.addEventListener("alpine:init", () => {
 
     get amp() { return Alpine.store("katana"); },
     get practice() { return Alpine.store("practice"); },
+    get wifi() { return Alpine.store("wifi"); },
     showTab(name) {
       this.tab = name;
       history.replaceState(null, "", `#${name}`);

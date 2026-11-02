@@ -262,6 +262,8 @@ input {
 .chip:active { transform: translateY(1px); box-shadow: none; }
 .chip.muted { color: color-mix(in oklab, var(--foreground) 70%, transparent); }
 .chip svg { height: 0.75rem; width: 0.75rem; }
+.chip:disabled { cursor: default; }
+.blink { animation: pulse 1s ease-in-out infinite; }
 
 .dot { height: 0.375rem; width: 0.375rem; border-radius: 9999px; }
 .dot-open { background: var(--steel); box-shadow: 0 0 12px var(--steel); }
@@ -965,3 +967,11 @@ input {
 .kiosk, .kiosk * { cursor: none !important; }
 .kiosk body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .kiosk input, .kiosk textarea { user-select: text; -webkit-user-select: text; }
+
+/* ---- the hidden /wifi page ---- */
+.wifi-page {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  max-width: 34rem; margin: 0 auto; padding: 1rem;
+}
+.wifi-page .practice-banner { margin: 0; }
+.wifi-form .field { margin-bottom: 0.875rem; }
