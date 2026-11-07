@@ -13,20 +13,20 @@ slow in there and the card drops audio.
         guitar = block[:, DRY]
 """
 
-import os
 import queue
 
 import sounddevice
 
 RATE = 44100         # the only rate the Katana offers
 CHANNELS = 4
-# TEMPORARY, for the monitor latency experiment - both can be set when
-# starting the server: KATANA_BLOCK=256 KATANA_LATENCY=low ./run
-# KATANA_LATENCY is "low", "high", or seconds. Back to plain constants
-# once the best values are known.
-BLOCK = int(os.environ.get("KATANA_BLOCK", 512))  # frames per callback: 512 is 11.6 ms
-_latency = os.environ.get("KATANA_LATENCY", "high")
-LATENCY = _latency if _latency in ("low", "high") else float(_latency)
+# Small blocks, so the monitor sends each note on soon after it is
+# played. Measured on the Pi (2026-11-07): about 34 times a second one
+# block is handed over late, together with the next - at 512 that held
+# sound back 23 ms, at 256 only 11.6. 128 was no faster (PortAudio keeps
+# 3 blocks in hand there) and dropped more. The card drops a block or
+# two while the server starts up, and none were seen while playing.
+BLOCK = 256          # frames per callback: 5.8 ms at 44.1 kHz
+LATENCY = "low"      # PortAudio's smallest buffer for that block size
 WET = 0              # column of the amp's sound, effects and all
 DRY = 2              # column of the guitar before the preamp
 KATANA_NAME = "KATANA"

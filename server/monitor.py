@@ -14,7 +14,7 @@ import contextlib
 import logging
 
 from capture import Monitor
-from capture.stream import BLOCK, LATENCY
+from capture.stream import BLOCK
 from server import tuner
 
 WATCH_INTERVAL = 1.0     # seconds between looks at who is listening
@@ -34,9 +34,8 @@ def open_monitor():
     except OSError as exc:      # the port is taken, e.g. by a second server
         log.warning("Monitor disabled: %s", exc)
         return
-    # TEMPORARY, for the latency experiment: what the card was opened with.
-    log.info("Monitor: blocks of %d frames, capture latency %.1f ms (asked for %s)",
-             BLOCK, tuner.capture.latency() * 1000, LATENCY)
+    log.info("Monitor: blocks of %d frames, capture latency %.1f ms",
+             BLOCK, tuner.capture.latency() * 1000)
 
 
 async def close_monitor():

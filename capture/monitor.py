@@ -4,7 +4,7 @@ so you can hear it in headphones plugged into a laptop.
 Monitor sends the wet amp sound (channel 1, effects and all - channel 2
 is the same) from a Capture in UDP packets, one per block. UDP never
 waits for a lost packet to be sent again, so a packet lost on the way is
-an 11.6 ms gap rather than everything behind it stalling, as it would
+a 5.8 ms gap rather than everything behind it stalling, as it would
 over TCP.
 
 Nobody is set up in advance. A listener asks for the sound by sending
@@ -18,9 +18,9 @@ Each packet is:
     the rest     BLOCK samples: 16-bit signed, little-endian, mono, 44.1 kHz
 
 The numbers let a listener tell a lost packet (a gap) from a late one
-(smaller than the one before). 16 bits rather than float32 so a packet,
-1028 bytes, fits in one WiFi frame (1500 bytes): a bigger one is split
-in two, and losing either half loses all of it.
+(smaller than the one before). 16 bits rather than float32 so a packet
+fits in one WiFi frame (1500 bytes) even at 512 frames a block: a bigger
+one is split in two, and losing either half loses all of it.
 
     monitor = Monitor(capture)
     monitor.listeners       # [(address, port), ...] being sent to
