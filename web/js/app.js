@@ -68,6 +68,7 @@ document.addEventListener("alpine:init", () => {
       try { return localStorage.getItem("katana.tab") === "practice" ? "practice" : "amp"; } catch { return "amp"; }
     })(),
     openBlock: null,
+    delayTab: 1,          // which delay engine the delay editor shows
     channels: CHANNELS,
     footswitches: FOOTSWITCHES,
     ampKnobs: [
@@ -126,12 +127,15 @@ document.addEventListener("alpine:init", () => {
           };
         }
         case "delay": {
-          const params = [
-            ...delayParams("delay", amp.num("delay_type")),
-            ...delayParams("delay2", amp.num("delay2_type")),
-          ];
-          const built = panel(params);
-          built.toggles.unshift({ key: "delay2_switch", label: "Delay 2", kind: "toggle" });
+          // Two independent engines, one tab each, so only one set of
+          // controls is on screen at a time.
+          const prefix = this.delayTab === 2 ? "delay2" : "delay";
+          const built = panel(delayParams(prefix, amp.num(`${prefix}_type`)));
+          built.toggles.unshift({ key: `${prefix}_switch`, label: "On", kind: "toggle" });
+          built.tabs = [1, 2].map((engine) => {
+            const on = amp.bool(engine === 1 ? "delay_switch" : "delay2_switch");
+            return { id: engine, label: `Delay ${engine} · ${on ? "on" : "off"}` };
+          });
           return built;
         }
         case "reverb":

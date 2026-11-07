@@ -679,37 +679,70 @@
         </button>
         <span class="eq-actions" x-show="expanded">
           <button type="button" class="chip" @click="$store.katana.toggle('eq_switch')" x-text="on ? 'on' : 'off'"></button>
+          <button type="button" class="chip muted" @click="toggleType()" :title="'switch to ' + (parametric ? 'GE-10' : 'parametric')" x-text="parametric ? 'parametric' : 'GE-10'"></button>
           <button type="button" class="chip muted" @click="flat()">flat</button>
           <button type="button" class="chip muted" @click="openBlock = 'eq'">setup</button>
         </span>
       </div>
 
-      <!-- Draw-anywhere: drag across the pad and the band values follow the
-           finger, the numbers are derived instead of typed in. -->
+      <!-- GE-10: draw anywhere - drag across the pad and the band values
+           follow the finger, the numbers are derived instead of typed in.
+           Parametric: the curve the settings produce, with one dot per band
+           to drag (and the mouse wheel or Q -/+ for a mid band's width). -->
       <div x-show="expanded">
       <div
         class="eq-pad"
-        :class="dragging && 'dragging'"
+        :class="[dragging && 'dragging', parametric && 'parametric']"
         x-ref="pad"
         role="application"
-        aria-label="Graphic EQ curve — drag to shape"
+        :aria-label="parametric ? 'Parametric EQ curve — drag the dots' : 'Graphic EQ curve — drag to shape'"
         style="height:150px"
         @pointerdown="down($event)"
         @pointermove="move($event)"
         @pointerup="up($event)"
         @pointercancel="up($event)"
+        @wheel="wheel($event)"
       >
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%">
           <line x1="0" y1="50" x2="100" y2="50" class="stroke-hairline" stroke-width="0.6" />
           <path :d="fill" :class="on ? 'fill-steel-soft' : 'fill-muted-soft'" />
           <path :d="curve" fill="none" stroke-width="1.6" vector-effect="non-scaling-stroke" :class="on ? 'stroke-steel' : 'stroke-steel-dim'" />
         </svg>
+        <!-- HTML, not SVG: the SVG stretches to the pad, which would squash
+             round dots, and Alpine's template loops do not work inside SVG. -->
+        <template x-if="parametric">
+          <div>
+            <template x-for="tick in ticks" :key="tick.hertz">
+              <span class="peq-grid" :style="`left:${tick.x}%`"></span>
+            </template>
+            <template x-for="node in nodes" :key="node.id">
+              <span class="peq-dot" :class="node.active && 'active'" :style="`left:${node.x}%;top:${node.y}%`" :title="node.label"></span>
+            </template>
+          </div>
+        </template>
       </div>
-      <div class="eq-labels">
+      <div class="eq-labels" x-show="!parametric">
         <template x-for="(band, index) in bands" :key="band.key">
           <span :class="hover === index && 'hot'" x-text="hover === index ? $store.katana.num(band.key) : band.label"></span>
         </template>
       </div>
+      <template x-if="parametric">
+        <div>
+          <div class="peq-axis">
+            <template x-for="tick in ticks" :key="tick.hertz">
+              <span :style="`left:${tick.x}%`" x-text="tick.label"></span>
+            </template>
+          </div>
+          <div class="peq-info">
+            <span class="peq-readout" x-text="readout"></span>
+            <span class="peq-q" x-show="selectedNode && selectedNode.q">
+              <button type="button" class="chip muted" @click="nudgeQ(-1)" aria-label="wider">Q −</button>
+              <button type="button" class="chip muted" @click="nudgeQ(1)" aria-label="narrower">Q +</button>
+            </span>
+            <span class="peq-level" x-text="level"></span>
+          </div>
+        </div>
+      </template>
       </div>
 
       <!-- collapsed: the curve alone, still readable at a glance -->
@@ -728,6 +761,20 @@
       <div class="sheet" role="dialog" aria-modal="true">
         <div class="sheet-inner">
           <h2 class="sheet-title" x-text="titles[openBlock]"></h2>
+
+          <!-- tabs, for a block with more than one engine (the two delays) -->
+          <template x-if="editor && editor.tabs">
+            <div class="segmented editor-tabs">
+              <template x-for="tab in editor.tabs" :key="tab.id">
+                <button
+                  type="button" class="seg"
+                  :class="tab.id === delayTab && 'active'"
+                  @click="delayTab = tab.id"
+                  x-text="tab.label"
+                ></button>
+              </template>
+            </div>
+          </template>
 
           <!-- effect chooser, for the two FX slots -->
           <template x-if="editor && editor.fxSlot">

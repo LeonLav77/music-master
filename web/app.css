@@ -546,6 +546,23 @@ input {
   font-family: var(--font-mono); font-size: 0.45rem; color: var(--muted-foreground); text-align: center;
 }
 .eq-labels span.hot { color: var(--steel); }
+/* Parametric EQ: dots on the curve, a log frequency axis, the readout. */
+.eq-pad.parametric { cursor: default; }
+.peq-dot {
+  position: absolute; width: 0.85rem; height: 0.85rem; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 2px solid var(--steel); background: var(--panel);
+  pointer-events: none; box-shadow: 0 0 0 3px oklch(0 0 0 / 35%);
+}
+.peq-dot.active { background: var(--ember); border-color: var(--ember); }
+.peq-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--hairline); opacity: 0.5; pointer-events: none; }
+.peq-axis { position: relative; height: 0.8rem; margin-top: 0.25rem; font-family: var(--font-mono); font-size: 0.45rem; color: var(--muted-foreground); }
+.peq-axis span { position: absolute; transform: translateX(-50%); }
+.peq-info { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem; font-family: var(--font-mono); font-size: 0.55rem; color: var(--muted-foreground); }
+.peq-readout { flex: 1; color: var(--steel); }
+.peq-q { display: flex; gap: 0.25rem; }
+.eq-anchor.open .peq-axis { font-size: 0.7rem; height: 1.1rem; margin-top: 0.5rem; }
+.eq-anchor.open .peq-info { font-size: 0.75rem; margin-top: 0.5rem; }
+.eq-anchor.open .peq-dot { width: 1.25rem; height: 1.25rem; }
 .stroke-hairline { stroke: var(--hairline); }
 .fill-steel-soft { fill: color-mix(in oklab, var(--steel) 10%, transparent); }
 .fill-muted-soft { fill: color-mix(in oklab, var(--muted) 10%, transparent); }
@@ -606,6 +623,10 @@ input {
   letter-spacing: 0.18em; color: var(--muted-foreground);
 }
 .segmented { display: grid; gap: 0.25rem; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+/* Tabs over an editor sheet: bigger than the option rows below them, and
+   separated by a rule, so they read as "which engine", not as a setting. */
+.editor-tabs { grid-template-columns: repeat(2, 1fr); padding-bottom: 0.75rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--hairline); }
+.editor-tabs .seg { padding-top: 0.6rem; padding-bottom: 0.6rem; font-size: 0.75rem; letter-spacing: 0.12em; }
 .seg {
   display: flex; align-items: center; justify-content: center;
   border-radius: 3px; border: 1px solid var(--hairline); background: var(--panel);

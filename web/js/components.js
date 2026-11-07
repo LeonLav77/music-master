@@ -6,6 +6,8 @@
 import {
   dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES,
   eqPath, eqHit, eqGapFill,
+  peqPath, peqX, peqY, stepHertz, PEQ_F_MIN, PEQ_F_MAX, PEQ_RANGE, PEQ_GAIN_LIMIT,
+  PEQ_TICKS, LOW_SHELF_HZ, HIGH_SHELF_HZ,
 } from "./controls.js";
 import { EQ_BANDS, AMP_MODEL_OPTIONS, PARAM_BY_KEY } from "./schema.js";
 import { transport } from "./transport.js";
@@ -183,8 +185,119 @@ export function eqPad() {
       return out;
     },
     get on() { return store().bool("eq_switch"); },
-    get curve() { return eqPath(this.values, 50); },
+    // eq_type 0 is the parametric EQ, 1 the GE-10. The amp keeps both.
+    get parametric() { return store().num("eq_type") === 0; },
+    toggleType() { store().set("eq_type", this.parametric ? 1 : 0); },
+    get curve() { return this.parametric ? peqPath(peqSettings()) : eqPath(this.values, 50); },
     get fill() { return `${this.curve} L 100 100 L 0 100 Z`; },
+
+    // ---- parametric: draggable dots ----
+    ticks: PEQ_TICKS,
+    selected: null,
+    _node: null,
+    get nodes() {
+      return PEQ_NODES.map((node) => ({ ...node, ...nodePosition(node), active: node.id === this.selected }));
+    },
+    get selectedNode() { return PEQ_NODES.find((node) => node.id === this.selected) ?? null; },
+    get readout() {
+      const node = this.selectedNode;
+      return node ? nodeReadout(node) : "drag a dot · tap a mid dot for Q";
+    },
+    get level() {
+      const value = store().num("eq_peq_level");
+      return `level ${value > 0 ? "+" : ""}${value} dB`;
+    },
+    nudgeQ(step) {
+      const node = this.selectedNode;
+      if (!node?.q) return;
+      const steps = PARAM_BY_KEY[node.q].steps;
+      store().set(node.q, Math.min(steps.length - 1, Math.max(0, store().num(node.q) + step)));
+    },
+    /** The dot nearest the pointer, if one is close enough to grab. */
+    _grab(ev) {
+      const rect = this.$refs.pad.getBoundingClientRect();
+      let best = null, bestDistance = 28;
+      for (const node of PEQ_NODES) {
+        const { x, y } = nodePosition(node);
+        const distance = Math.hypot(ev.clientX - rect.left - (x / 100) * rect.width, ev.clientY - rect.top - (y / 100) * rect.height);
+        if (distance < bestDistance) { best = node; bestDistance = distance; }
+      }
+      return best;
+    },
+    _drag(ev) {
+      const node = this._node;
+      const rect = this.$refs.pad.getBoundingClientRect();
+      const across = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
+      const down = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
+      if (node.freq) {
+        // Snap to the nearest step the amp offers.
+        const steps = PARAM_BY_KEY[node.freq].steps;
+        let nearest = 0;
+        steps.forEach((label, index) => {
+          if (Math.abs(peqX(stepHertz(label, node.flat)) - across) < Math.abs(peqX(stepHertz(steps[nearest], node.flat)) - across)) nearest = index;
+        });
+        store().set(node.freq, nearest);
+      }
+      if (node.gain) {
+        const gain = Math.round((0.5 - down) * 2 * PEQ_RANGE);
+        store().set(node.gain, Math.min(PEQ_GAIN_LIMIT, Math.max(-PEQ_GAIN_LIMIT, gain)));
+      }
+    },
+    wheel(ev) {
+      if (!this.parametric) return;
+      const node = this._grab(ev) ?? this.selectedNode;
+      if (!node?.q) return;
+      ev.preventDefault();
+      this.selected = node.id;
+      this.nudgeQ(ev.deltaY < 0 ? 1 : -1);
+    },
+
+    down(ev) {
+      if (this.parametric) {
+        const node = this._grab(ev);
+        this.selected = node?.id ?? null;
+        if (!node) return;
+        ev.target.setPointerCapture?.(ev.pointerId);
+        this._node = node;
+        this.dragging = true;
+        nodeKeys(node).forEach((key) => store().hold(key, true));
+        return;
+      }
+      ev.target.setPointerCapture?.(ev.pointerId);
+      this._lastIdx = null;
+      this.dragging = true;
+      // Drawing sweeps across bands, so hold the whole row until the
+      // gesture ends rather than one band at a time.
+      EQ_BANDS.forEach((band) => store().hold(band.key, true));
+      this.apply(ev);
+    },
+    move(ev) {
+      if (!this.dragging) return;
+      if (this._node) this._drag(ev);
+      else this.apply(ev);
+    },
+    up(ev) {
+      ev.target.releasePointerCapture?.(ev.pointerId);
+      this.dragging = false;
+      if (this._node) {
+        nodeKeys(this._node).forEach((key) => store().hold(key, false));
+        this._node = null;
+        return;
+      }
+      this.hover = null;
+      this._lastIdx = null;
+      EQ_BANDS.forEach((band) => store().hold(band.key, false));
+    },
+    flat() {
+      if (this.parametric) {
+        // Cuts open, every gain to 0. Frequencies, Q and level stay put.
+        store().set("eq_low_cut", 0);
+        store().set("eq_high_cut", PARAM_BY_KEY.eq_high_cut.steps.length - 1);
+        PEQ_NODES.forEach((node) => node.gain && store().set(node.gain, 0));
+        return;
+      }
+      EQ_BANDS.forEach((band) => store().set(band.key, 0));
+    },
 
     apply(ev) {
       const rect = this.$refs.pad.getBoundingClientRect();
@@ -197,29 +310,56 @@ export function eqPad() {
       this.hover = idx;
       store().set(EQ_BANDS[idx].key, value);
     },
-    down(ev) {
-      ev.target.setPointerCapture?.(ev.pointerId);
-      this._lastIdx = null;
-      this.dragging = true;
-      // Drawing sweeps across bands, so hold the whole row until the
-      // gesture ends rather than one band at a time.
-      EQ_BANDS.forEach((band) => store().hold(band.key, true));
-      this.apply(ev);
-    },
-    move(ev) {
-      if (!this.dragging) return;
-      this.apply(ev);
-    },
-    up(ev) {
-      ev.target.releasePointerCapture?.(ev.pointerId);
-      this.dragging = false;
-      this.hover = null;
-      this._lastIdx = null;
-      EQ_BANDS.forEach((band) => store().hold(band.key, false));
-    },
-    flat() {
-      EQ_BANDS.forEach((band) => store().set(band.key, 0));
-    },
+  };
+}
+
+// ---- parametric EQ helpers ----
+//
+// One dot per band. `freq` moves it left/right through the amp's steps,
+// `gain` moves it up/down, `q` is its width. The shelves sit at a fixed,
+// assumed frequency; the cuts stay on the centre line.
+const PEQ_NODES = [
+  { id: "low_cut", label: "Low Cut", freq: "eq_low_cut", flat: PEQ_F_MIN },
+  { id: "low", label: "Low", gain: "eq_low_gain", hertz: LOW_SHELF_HZ },
+  { id: "low_mid", label: "Lo-Mid", freq: "eq_low_mid_freq", q: "eq_low_mid_q", gain: "eq_low_mid_gain" },
+  { id: "high_mid", label: "Hi-Mid", freq: "eq_high_mid_freq", q: "eq_high_mid_q", gain: "eq_high_mid_gain" },
+  { id: "high", label: "High", gain: "eq_high_gain", hertz: HIGH_SHELF_HZ },
+  { id: "high_cut", label: "High Cut", freq: "eq_high_cut", flat: PEQ_F_MAX },
+];
+
+const stepLabel = (key) => PARAM_BY_KEY[key].steps[store().num(key)] ?? "";
+const nodeHertz = (node) => (node.freq ? stepHertz(stepLabel(node.freq), node.flat) : node.hertz);
+const nodeKeys = (node) => [node.freq, node.gain].filter(Boolean);
+
+function nodePosition(node) {
+  return { x: peqX(nodeHertz(node)), y: peqY(node.gain ? store().num(node.gain) : 0) };
+}
+
+function nodeReadout(node) {
+  const parts = [node.label];
+  if (node.freq) parts.push(stepLabel(node.freq));
+  if (node.q) parts.push(`Q ${stepLabel(node.q)}`);
+  if (node.gain) {
+    const gain = store().num(node.gain);
+    parts.push(`${gain > 0 ? "+" : ""}${gain} dB`);
+  }
+  return parts.join(" · ");
+}
+
+/** The amp's parametric settings, in the units the curve math wants. */
+function peqSettings() {
+  const cut = (key, flat) => (stepLabel(key) === "FLAT" ? null : stepHertz(stepLabel(key), flat));
+  const mid = (prefix) => ({
+    hertz: stepHertz(stepLabel(`${prefix}_freq`)),
+    q: parseFloat(stepLabel(`${prefix}_q`)) || 1,
+    gain: store().num(`${prefix}_gain`),
+  });
+  return {
+    lowCut: cut("eq_low_cut", PEQ_F_MIN),
+    highCut: cut("eq_high_cut", PEQ_F_MAX),
+    lowGain: store().num("eq_low_gain"),
+    highGain: store().num("eq_high_gain"),
+    mids: [mid("eq_low_mid"), mid("eq_high_mid")],
   };
 }
 

@@ -10,7 +10,7 @@ export const BLOCK_TITLES = {
   boost: "Boost / Overdrive",
   mod: "Mod — FX slot 1",
   fx: "FX — slot 2",
-  delay: "Delay engines",
+  delay: "Delay",
   reverb: "Reverb",
   gate: "Noise gate",
   eq: "EQ",

@@ -111,3 +111,88 @@ export function eqGapFill(prev, idx, clamped, values) {
   }
   return out;
 }
+
+// ---- parametric EQ ----
+//
+// The parametric pad draws the curve the settings produce, on a log
+// frequency axis. The axis ends sit just outside the amp's real range, so
+// the two cut filters' FLAT setting gets a spot of its own at each edge.
+
+export const PEQ_F_MIN = 14;
+export const PEQ_F_MAX = 20000;
+export const PEQ_RANGE = 24;   // dB from the centre line to the edge, as on the GE-10 pad
+export const PEQ_GAIN_LIMIT = 20;
+// Roland does not publish where the Low/High shelves start to bend, so the
+// drawn curve assumes these. The values sent to the amp are exact either way.
+export const LOW_SHELF_HZ = 100;
+export const HIGH_SHELF_HZ = 8000;
+
+/** Horizontal position (0-100) of a frequency. */
+export function peqX(hertz) {
+  return (Math.log(hertz / PEQ_F_MIN) / Math.log(PEQ_F_MAX / PEQ_F_MIN)) * 100;
+}
+
+/** Vertical position (0-100, top is +) of a level in dB. */
+export function peqY(decibels) {
+  return 50 - (decibels / PEQ_RANGE) * 50;
+}
+
+/** A step label as hertz: "1.25 kHz" -> 1250. FLAT has no frequency, so it
+ *  takes `flat` - the axis edge it is drawn at. */
+export function stepHertz(label, flat) {
+  if (label === "FLAT") return flat;
+  const number = parseFloat(label);
+  return label.includes("kHz") ? number * 1000 : number;
+}
+
+// Each filter's power gain (|H|^2) at one frequency, from the textbook
+// analog shapes. Multiplying them stacks the filters, like the amp does.
+function cutPower(hertz, corner, highPass) {
+  const ratio = (hertz / corner) ** 4;          // 24 dB per octave
+  return highPass ? ratio / (1 + ratio) : 1 / (1 + ratio);
+}
+
+function shelfPower(hertz, corner, gain, low) {
+  const amplitude = 10 ** (gain / 20);
+  const ratio = (hertz / corner) ** 2;
+  return low
+    ? (ratio + amplitude ** 2) / (ratio + 1)
+    : (amplitude ** 2 * ratio + 1) / (ratio + 1);
+}
+
+function peakPower(hertz, centre, width, gain) {
+  const amplitude = 10 ** (gain / 40);
+  const ratio = hertz / centre;
+  const detune = (1 - ratio ** 2) ** 2;
+  return (detune + (ratio * amplitude / width) ** 2) / (detune + (ratio / (amplitude * width)) ** 2);
+}
+
+/** The EQ's effect in dB at one frequency. `settings` is
+ *  { lowCut, highCut (hertz or null for FLAT), lowGain, highGain, mids: [{ hertz, q, gain }] }. */
+export function peqResponse(settings, hertz) {
+  let power = shelfPower(hertz, LOW_SHELF_HZ, settings.lowGain, true)
+    * shelfPower(hertz, HIGH_SHELF_HZ, settings.highGain, false);
+  if (settings.lowCut) power *= cutPower(hertz, settings.lowCut, true);
+  if (settings.highCut) power *= cutPower(hertz, settings.highCut, false);
+  for (const band of settings.mids) power *= peakPower(hertz, band.hertz, band.q, band.gain);
+  return 10 * Math.log10(power);
+}
+
+/** SVG path of the whole curve, sampled across the axis. */
+export function peqPath(settings, points = 120) {
+  const parts = [];
+  for (let index = 0; index <= points; index++) {
+    const across = (index / points) * 100;
+    const hertz = PEQ_F_MIN * (PEQ_F_MAX / PEQ_F_MIN) ** (across / 100);
+    const height = Math.min(100, Math.max(0, peqY(peqResponse(settings, hertz))));
+    parts.push(`${index === 0 ? "M" : "L"} ${across.toFixed(2)} ${height.toFixed(2)}`);
+  }
+  return parts.join(" ");
+}
+
+/** Frequency ticks for the axis under the pad. */
+export const PEQ_TICKS = [
+  { hertz: 50, label: "50" }, { hertz: 100, label: "100" }, { hertz: 200, label: "200" },
+  { hertz: 500, label: "500" }, { hertz: 1000, label: "1k" }, { hertz: 2000, label: "2k" },
+  { hertz: 5000, label: "5k" }, { hertz: 10000, label: "10k" },
+].map((tick) => ({ ...tick, x: peqX(tick.hertz) }));
