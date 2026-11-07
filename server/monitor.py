@@ -14,6 +14,7 @@ import contextlib
 import logging
 
 from capture import Monitor
+from capture.stream import BLOCK, LATENCY
 from server import tuner
 
 WATCH_INTERVAL = 1.0     # seconds between looks at who is listening
@@ -32,6 +33,10 @@ def open_monitor():
         monitor = Monitor(tuner.capture)
     except OSError as exc:      # the port is taken, e.g. by a second server
         log.warning("Monitor disabled: %s", exc)
+        return
+    # TEMPORARY, for the latency experiment: what the card was opened with.
+    log.info("Monitor: blocks of %d frames, capture latency %.1f ms (asked for %s)",
+             BLOCK, tuner.capture.latency() * 1000, LATENCY)
 
 
 async def close_monitor():
@@ -43,7 +48,16 @@ async def close_monitor():
 
 async def _watch():
     sending_to = set()
+    overruns = 0
     while True:
+        # Blocks the card dropped because nobody read them in time - the
+        # price of too small a buffer.
+        capture = tuner.capture
+        if capture is not None:
+            if capture.overruns > overruns:
+                log.warning("Capture: %d blocks dropped so far", capture.overruns)
+            overruns = capture.overruns   # back to 0 when hotplug reopens it
+
         listeners = set() if monitor is None else set(monitor.listeners)
         for host, port in listeners - sending_to:
             log.info("Monitor: sending to %s:%d", host, port)

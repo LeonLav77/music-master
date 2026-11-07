@@ -13,13 +13,20 @@ slow in there and the card drops audio.
         guitar = block[:, DRY]
 """
 
+import os
 import queue
 
 import sounddevice
 
 RATE = 44100         # the only rate the Katana offers
 CHANNELS = 4
-BLOCK = 512          # frames per callback: 11.6 ms at 44.1 kHz
+# TEMPORARY, for the monitor latency experiment - both can be set when
+# starting the server: KATANA_BLOCK=256 KATANA_LATENCY=low ./run
+# KATANA_LATENCY is "low", "high", or seconds. Back to plain constants
+# once the best values are known.
+BLOCK = int(os.environ.get("KATANA_BLOCK", 512))  # frames per callback: 512 is 11.6 ms
+_latency = os.environ.get("KATANA_LATENCY", "high")
+LATENCY = _latency if _latency in ("low", "high") else float(_latency)
 WET = 0              # column of the amp's sound, effects and all
 DRY = 2              # column of the guitar before the preamp
 KATANA_NAME = "KATANA"
@@ -52,7 +59,7 @@ class Capture:
                 channels=CHANNELS,
                 dtype="float32",
                 blocksize=BLOCK,
-                latency="high",
+                latency=LATENCY,
                 device=find_input() if device is None else device,
                 callback=self._receive,
             )
