@@ -42,6 +42,62 @@ OP_SET = 0x12
 LIVE_BASE = 0x60000000
 NAME_LENGTH = 16
 
+# Every block of a patch: name -> (offset from the patch's base, length in
+# bytes). From Roland's address map in BOSS Tone Studio; the names are the
+# ones .tsl files use ("UserPatch%Fx(1)"). Lengths count real bytes, so a
+# block that crosses 0x7F continues at the next 0x100 - see advance().
+PATCH_BLOCKS = {
+    "PatchName": (0x000, 16),
+    "Patch_0": (0x010, 72),
+    "Eq(2)": (0x060, 24),
+    "Fx(1)": (0x100, 225),
+    "Fx(2)": (0x300, 225),
+    "Delay(1)": (0x500, 26),
+    "Delay(2)": (0x520, 26),
+    "Patch_1": (0x540, 91),
+    "Patch_2": (0x620, 36),
+    "Status": (0x650, 18),
+    "KnobAsgn": (0x700, 34),
+    "ExpPedalAsgn": (0x800, 34),
+    "ExpPedalAsgnMinMax": (0x830, 78),
+    "GafcExp1Asgn": (0x900, 34),
+    "GafcExp1AsgnMinMax": (0x930, 78),
+    "GafcExp2Asgn": (0xA00, 34),
+    "GafcExp2AsgnMinMax": (0xA30, 78),
+    "GafcExp3Asgn": (0xB00, 34),
+    "GafcExp3AsgnMinMax": (0xB30, 78),
+    "GafcExExp1Asgn": (0xC00, 34),
+    "GafcExExp1AsgnMinMax": (0xC30, 78),
+    "GafcExExp2Asgn": (0xD00, 34),
+    "GafcExExp2AsgnMinMax": (0xD30, 78),
+    "GafcExExp3Asgn": (0xE00, 34),
+    "GafcExExp3AsgnMinMax": (0xE30, 78),
+    "CtrlAsgn": (0xF00, 8),
+    "FsAsgn": (0xF08, 2),
+    "Patch_Mk2V2": (0xF10, 22),
+    "Contour(1)": (0xF30, 2),
+    "Contour(2)": (0xF38, 2),
+    "Contour(3)": (0xF40, 2),
+}
+
+
+def advance(address, count):
+    """The address `count` bytes after `address`.
+
+    Every byte of an address only counts to 0x7F, so one byte after
+    0x6000017F is 0x60000200 - plain `+ 1` would give 0x60000180, which
+    is not a real address.
+    """
+    linear = 0
+    for shift in (24, 16, 8, 0):
+        linear = linear * 128 + ((address >> shift) & 0x7F)
+    linear += count
+    result = 0
+    for shift in (0, 8, 16, 24):
+        result |= (linear % 128) << shift
+        linear //= 128
+    return result
+
 class KatanaError(Exception):
     """Raised when the amp cannot be reached or does not answer."""
 
@@ -288,18 +344,22 @@ class Katana:
         """Write bytes into a stored patch."""
         self.write(self._encode_address(self.patch_address(patch, offset)), data)
 
-    PATCH_REGIONS = ((0x000, 0x740), (0x780, 0x040), (0x800, 0x100))
-
     def copy_live_to_patch(self, patch):
+        """Store the live sound in patch 1-9. Returns the bytes written.
+
+        Everything is read before anything is written, so an amp that stops
+        answering halfway leaves the stored patch untouched rather than half
+        overwritten.
+        """
         chunk = 0x20
-        written = 0
-        for start, length in self.PATCH_REGIONS:
-            for offset in range(start, start + length, chunk):
-                size = min(chunk, start + length - offset)
-                block = self.read(self._encode_address(LIVE_BASE + offset), size)
-                self.write_patch(patch, offset, block)
-                written += len(block)
-        return written
+        pieces = []
+        for offset, length in PATCH_BLOCKS.values():
+            for start in range(0, length, chunk):
+                address = advance(LIVE_BASE + offset, start)
+                pieces.append((address - LIVE_BASE, self.read(self._encode_address(address), min(chunk, length - start))))
+        for offset, data in pieces:
+            self.write_patch(patch, offset, data)
+        return sum(len(data) for _, data in pieces)
 
 
 # --- The shared connection -----------------------------------------------

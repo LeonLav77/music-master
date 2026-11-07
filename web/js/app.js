@@ -12,8 +12,8 @@ import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
 import {
-  BLOCK_TITLES, FX_PARAM_MAP, BOOST_PARAMS, REVERB_PARAMS, WAH_PARAMS,
-  GATE_PARAMS, delayParams, knobParams, enumParams, toggleParams,
+  BLOCK_TITLES, AMP_PARAMS, BOOST_PARAMS, GATE_PARAMS, HARMONIST_TYPE, MASTER_KEY,
+  contourParams, delayParams, effectParams, eqParams, reverbParams, wahParams, panel,
 } from "./blocks.js";
 
 // The Pi's own touch screen opens the page as /?kiosk (deploy/kiosk-browser).
@@ -107,38 +107,41 @@ document.addEventListener("alpine:init", () => {
       if (!id) return null;
       const amp = this.amp;
       switch (id) {
+        case "amp":
+          return panel([...AMP_PARAMS, ...contourParams(amp.num("contour_select") + 1)]);
         case "boost":
-          return { enums: enumParams(BOOST_PARAMS), knobs: knobParams(BOOST_PARAMS), toggles: toggleParams(BOOST_PARAMS), note: null };
+          return panel(BOOST_PARAMS);
         case "mod":
         case "fx": {
+          // Each slot has its own copy of every effect's knobs (fx1_... and
+          // fx2_...), so editing slot 2 never touches slot 1.
           const slot = id === "mod" ? 1 : 2;
           const typeKey = `fx${slot}_type`;
-          const name = labelFor(typeKey, amp.num(typeKey));
-          const params = FX_PARAM_MAP[name];
+          const type = amp.num(typeKey);
+          const params = effectParams(slot, type);
+          if (type === HARMONIST_TYPE) params.push(MASTER_KEY);
           return {
-            fxSlot: { typeKey, options: FX_TYPE_OPTIONS, current: amp.num(typeKey), name },
-            enums: [], toggles: [],
-            knobs: params ? knobParams(params) : [],
-            note: params ? null : `${name} is selectable but its parameters are not mapped — values read back as unknown, not zero.`,
+            fxSlot: { typeKey, options: FX_TYPE_OPTIONS, current: type, name: labelFor(typeKey, type) },
+            ...panel(params, params.length ? null : `Type ${type} is accepted by the amp, but no effect uses it.`),
           };
         }
         case "delay": {
-          const delay1 = delayParams("delay"), delay2 = delayParams("delay2");
-          return {
-            enums: [...enumParams(delay1), ...enumParams(delay2)],
-            knobs: [...knobParams(delay1), ...knobParams(delay2)],
-            toggles: [{ key: "delay2_switch", label: "Delay 2", kind: "toggle" }],
-            note: null,
-          };
+          const params = [
+            ...delayParams("delay", amp.num("delay_type")),
+            ...delayParams("delay2", amp.num("delay2_type")),
+          ];
+          const built = panel(params);
+          built.toggles.unshift({ key: "delay2_switch", label: "Delay 2", kind: "toggle" });
+          return built;
         }
         case "reverb":
-          return { enums: enumParams(REVERB_PARAMS), knobs: knobParams(REVERB_PARAMS), toggles: [], note: null };
+          return panel(reverbParams(amp.num("reverb_type")));
         case "gate":
-          return { enums: [], knobs: knobParams(GATE_PARAMS), toggles: [], note: null };
+          return panel(GATE_PARAMS);
         case "wah":
-          return { enums: enumParams(WAH_PARAMS), knobs: knobParams(WAH_PARAMS), toggles: [], note: null };
+          return panel(wahParams(amp.num("pedal_type")));
         case "eq":
-          return { enums: [], knobs: knobParams([{ key: "eq_level", label: "EQ Level" }]), toggles: [], note: null };
+          return panel(eqParams(amp.num("eq_type")));
         default:
           return null;
       }

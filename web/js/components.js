@@ -7,13 +7,19 @@ import {
   dragValue, knobArc, knobAngle, KNOB_START, KNOB_SWEEP, KNOB_SIZES,
   eqPath, eqHit, eqGapFill,
 } from "./controls.js";
-import { EQ_BANDS, AMP_MODEL_OPTIONS } from "./schema.js";
+import { EQ_BANDS, AMP_MODEL_OPTIONS, PARAM_BY_KEY } from "./schema.js";
 import { transport } from "./transport.js";
 
 const store = () => Alpine.store("katana");
 
-/** One amp knob. `key` is the parameter; pass `disabled` for a read-only one. */
-export function knob(key, label, { accent = "steel", size = "md", min = 0, max = 100, unit = "", disabled = false } = {}) {
+/** One amp knob. `key` is the parameter; pass `disabled` for a read-only one.
+ *  Range, unit and step text come from the schema unless passed in. */
+export function knob(key, label, { accent = "steel", size = "md", min, max, unit, disabled = false } = {}) {
+  const param = PARAM_BY_KEY[key] ?? {};
+  min = min ?? param.min ?? 0;
+  max = max ?? param.max ?? 100;
+  unit = unit ?? param.unit ?? "";
+  const steps = param.steps ?? null;
   return {
     key, label, accent, size, min, max, unit, disabled,
     sizePx: KNOB_SIZES[size],
@@ -23,7 +29,11 @@ export function knob(key, label, { accent = "steel", size = "md", min = 0, max =
     get value() { return store().num(this.key); },
     get angle() { return knobAngle(this.value, this.min, this.max); },
     get valuePath() { return knobArc(KNOB_START, this.angle + 0.01); },
-    get readout() { return `${Math.round(this.value)}${this.unit}`; },
+    // A stepped knob shows Tone Studio's text ("1.25 kHz"), not the step number.
+    get readout() {
+      const value = Math.round(this.value);
+      return steps ? (steps[value - this.min] ?? String(value)) : `${value}${this.unit}`;
+    },
 
     drag: null,
     init() {
@@ -89,13 +99,22 @@ export function ampDial(size = 180) {
 }
 
 /** The wah treadle: the whole slab is the pedal. */
+// pedal_type -> the settings the treadle moves. Each pedal mode keeps its
+// own position (and the two wahs their own travel limits).
+const PEDAL_MODES = {
+  0: { position: "wah_position", min: "wah_pedal_min", max: "wah_pedal_max" },
+  1: { position: "pedal_bend_position", min: null, max: null },
+  2: { position: "wah_95e_position", min: "wah_95e_pedal_min", max: "wah_95e_pedal_max" },
+};
+
 export function treadle() {
   return {
     dragging: false,
 
-    get value() { return store().num("wah_position"); },
-    get min() { return store().num("wah_pedal_min"); },
-    get max() { return store().num("wah_pedal_max"); },
+    get mode() { return PEDAL_MODES[store().num("pedal_type")] ?? PEDAL_MODES[0]; },
+    get value() { return store().num(this.mode.position); },
+    get min() { return this.mode.min ? store().num(this.mode.min) : 0; },
+    get max() { return this.mode.max ? store().num(this.mode.max) : 100; },
     get on() { return store().bool("pedal_switch"); },
     // Tilt only backwards (0deg at heel-down, never past vertical). Rotating
     // toward the viewer scales the near edge up under perspective, which is
@@ -115,12 +134,12 @@ export function treadle() {
     apply(ev) {
       const rect = this.$refs.slab.getBoundingClientRect();
       const fraction = 1 - (ev.clientY - rect.top) / rect.height;
-      store().set("wah_position", Math.round(Math.min(100, Math.max(0, fraction * 100))));
+      store().set(this.mode.position, Math.round(Math.min(100, Math.max(0, fraction * 100))));
     },
     down(ev) {
       ev.target.setPointerCapture?.(ev.pointerId);
       this.dragging = true;
-      store().hold("wah_position", true);
+      store().hold(this.mode.position, true);
       this.apply(ev);
     },
     move(ev) {
@@ -130,14 +149,14 @@ export function treadle() {
     up(ev) {
       ev.target.releasePointerCapture?.(ev.pointerId);
       this.dragging = false;
-      store().hold("wah_position", false);
+      store().hold(this.mode.position, false);
     },
     key(ev) {
       const map = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 };
       const step = map[ev.key];
       if (step === undefined) return;
       ev.preventDefault();
-      store().set("wah_position", Math.min(100, Math.max(0, this.value + step)));
+      store().set(this.mode.position, Math.min(100, Math.max(0, this.value + step)));
     },
   };
 }

@@ -87,27 +87,36 @@ Param("gain")                # Param.GAIN - like Laravel's Param::from('gain')
 Param.GAIN.value             # 'gain' - what the browser sends
 Param.GAIN.address()         # 0x60000022
 Param.GAIN.kind()            # Kind.RANGE - RANGE is a knob, TOGGLE a switch, ENUM a dropdown
-Param.GAIN.range()           # (0, 100)
+Param.GAIN.range()           # (0, 120)
 Param.AMP_TYPE.options()     # {0: 'Natural Clean', ..., 8: 'JC-120', ...}
 Param.KNOB_VOLUME.is_writable()   # False
 Param.EQ_BAND_1KHZ.unit()    # 'dB'
-list(Param)                  # all 154 of them
+Param.EQ_HIGH_CUT.steps()    # ('630 Hz', '800 Hz', ...) - what each step reads as
+list(Param)                  # all 553 of them
 ```
 
 Adding a setting means a new case, its arm in `address()`, and an arm in
 any method where it is not the default.
 
-Values are always in real units. The EQ bands are dB: the amp stores them
-0–48 with 24 as flat, and `Param` converts. Delay times are milliseconds,
-stored by the amp as two bytes. `docs/CONTROLS.md` lists every setting.
+Values are always in real units, matching what BOSS Tone Studio shows. The
+EQ bands are dB: the amp stores them 0–48 with 24 as flat, and `Param`
+converts (`offset()`); boost Bottom and Tone run −50…+50 the same way.
+Delay times are milliseconds, stored by the amp as two bytes.
+`docs/CONTROLS.md` lists every setting.
 
-Each effect keeps its own settings whatever the FX slots are switched to,
-so you can dial one in *before* selecting it:
+The FX-slot effects are the exception to the one-case-per-setting rule.
+There are 31 of them with 210 knobs between them, and each slot has its
+own copy of every one, so they live as a table in `katana_amp/effects.py`
+and `Param` generates an `FX1_…` and an `FX2_…` member per knob.
+
+Each effect keeps its own settings whatever the slot is switched to, so you
+can dial one in *before* selecting it:
 
 ```python
-amp.set_parameter(Param.PHASER_RATE, 80)
-amp.set_parameter(Param.FX1_TYPE, 19)          # Phaser, into slot 1
+amp.set_parameter(Param.FX1_PHASER_RATE, 80)
+amp.set_parameter(Param.FX1_TYPE, 19)          # Phaser, into slot 1 (MOD)
 amp.set_parameter(Param.FX1_SWITCH, 1)
+amp.set_parameter(Param.FX2_PHASER_RATE, 20)   # slot 2's phaser is separate
 ```
 
 ### Channels and stored patches
@@ -217,52 +226,60 @@ panel addresses this amp ignores completely — no error, just silence. The
 MkII keeps its live state in a "temporary patch" area at `0x60000000`, with
 user patches 1-9 mirroring the same layout from `0x10000000` up.
 
-Verified addresses (read *and* written on a MkII 100W head):
+**Where the addresses come from.** The first ones (amp, boost, delay, EQ)
+were found by probing the amp. The full map came later, from BOSS Tone
+Studio itself: it is a web page inside a Chromium shell, and while it runs
+it unpacks its JavaScript to
+`%LOCALAPPDATA%\Roland\BOSS TONE STUDIO for KATANA MkII\html\`.
+`js/config/address_map.js` there is Roland's own table: every address,
+size, range and offset. `export/item.json` and `export/layout.div` hold the
+labels Tone Studio prints. Every address we had probed matched it. Those
+files are Roland's, so they are not copied into this repo; only the facts
+are, in `param.py` and `effects.py`.
 
-| Address | Parameter | Range |
-|---|---|---|
-| `0x60000000` | Patch name, 16 ASCII bytes | — |
-| `0x60000021` | Amp type | 0–27 |
-| `0x60000022` | Gain | 0–100 |
-| `0x60000023` | Volume knob (read-only) | 0–100 |
-| `0x60000024` | Bass | 0–100 |
-| `0x60000025` | Middle | 0–100 |
-| `0x60000026` | Treble | 0–100 |
-| `0x60000027` | Presence | 0–100 |
-| `0x60000028` | Master volume (`volume`) | 0–100 |
-| `0x60000029` | Bright | 0/1 |
-| `0x60000100` / `0x60000101` | FX1 switch / type | 0/1, 0–38 |
-| `0x60000300` / `0x60000301` | FX2 switch / type | 0/1, 0–38 |
-| `0x60000010`–`0x60000018` | Boost: switch, type, drive, bottom, tone, solo, level | |
-| `0x60000040`/`0x60000041` | EQ switch / type | |
-| `0x60000500`–`0x60000507` | Delay 1: switch, type, time, feedback, high cut, level, direct | |
-| `0x60000520`–`0x60000527` | Delay 2: same layout as delay 1 | |
-| `0x60000566`–`0x60000568` | Noise suppressor: switch, threshold, release | |
-| `0x6000065D`–`0x60000661` | Channel LEDs: boost, mod, fx, delay, reverb (read-only) | 0–3 |
-| `0x6000004D`–`0x60000057` | Graphic EQ: 10 bands + level | 0–48 |
-| `0x60000203`–`0x6000022A` | Effect blocks: phaser, flanger, tremolo, vibrato, Uni-V | |
-| `0x10000000` + `n * 0x10000` | Stored patches 1–9, same layout as live | |
-| `0x60000540`–`0x60000549` | Reverb: switch, type, time, level, direct | |
-| `0x60000550`–`0x60000557` | Pedal wah: switch, mode, voicing, position, min/max, level | |
+The layout, in short:
+
+| Address | What |
+|---|---|
+| `0x60000000` | Patch name, 16 ASCII bytes |
+| `0x60000010`–`0x60000057` | Boost, amp, EQ (parametric and GE-10) |
+| `0x60000100`–`0x60000260` | FX slot 1 (MOD): every effect's settings at once |
+| `0x60000300`–`0x60000460` | FX slot 2 (FX): same layout, +0x200 |
+| `0x60000500` / `0x60000520` | Delay 1 / delay 2, same layout |
+| `0x60000540`–`0x6000061A` | Reverb, pedal FX, foot volume, effects loop, noise gate, solo, contour |
+| `0x60000620`–`0x60000643` | Chain, block positions, colour assignments, cabinet resonance |
+| `0x60000650`–`0x60000661` | Status: panel TYPE, knob positions, LEDs (read-only) |
+| `0x60000F30`–`0x60000F41` | Contours 1–3 |
+| `0x10000000` + `n * 0x10000` | Stored patches 1–9, same layout as live |
+
+**Addresses count in 7 bits.** Every address byte only goes to `0x7F`, so
+the byte after `0x6000017F` is `0x60000200`. `katana.advance()` does that
+arithmetic. A `.tsl` file stores each block as a plain run of bytes, so
+byte 128 of the Fx(1) block belongs at `0x60000200`. Plain addition puts it
+at `0x60000180`, which is why effect settings past the first 128 bytes
+used to go missing from loaded patches.
 
 `0x60000023` reports the position of the physical volume knob and silently
 ignores writes, so the writable `volume` setting is master volume at
 `0x60000028` instead.
 
 Delay time is a **two-byte** value (`value = high * 128 + low`) in
-milliseconds, 1–2000. `set_parameter(Param.DELAY_TIME, 500)` handles the encoding.
+milliseconds, 1–2000. Reverb pre-delay and a few effect settings work the
+same way. `set_parameter(Param.DELAY_TIME, 500)` handles the encoding.
 
-The type *names* for delay and reverb come from the first-generation docs
-and are unverified on the MkII — the amp reports numbers only. The numbers
-are correct; a label may not be. Unknown values print as `type 10`.
+Still unnamed: amp types 28–32. Tone Studio never shows `amp_type`, only
+the panel TYPE (Acoustic/Clean/Crunch/Lead/Brown) plus VARIATION, which the
+amp turns into an `amp_type` internally. Turning the TYPE knob through all
+five positions, with VARIATION off and on, and reading `amp_type` and
+`panel_amp_type` back each time would name them.
 
-Still unmapped: Pitch Shifter and Harmonist (`0x6000014A`–`0x6000017B`),
-which carry per-voice interval tables rather than plain knobs, and the
-AC Processor. FX2 mirrors FX1 at +0x200 throughout.
-
-Not reachable by MIDI at all (physical switches, per the official manual):
-POWER CONTROL, CAB RESONANCE, TAP tempo, bank A/B hold-switch, STEREO
-EXPAND.
+Not reachable by MIDI (physical switches, per the official manual): POWER
+CONTROL and the bank A/B hold-switch. CAB RESONANCE *is* reachable, at
+`0x60000643`. STEREO EXPAND, line-out Air Feel and the global EQ are
+amp-wide settings in a separate system area from `0x00000000`; they are in
+Roland's map but not in `Param` yet. Tone Studio's TAP button sends a
+command to `0x7F010106` rather than setting a parameter; it is not wired up
+here yet either.
 
 ## Troubleshooting
 

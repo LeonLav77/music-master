@@ -57,16 +57,24 @@ def probe(connection):
     connection.read(connection._encode_address(Param.GAIN.address()), 1, attempts=1)
 
 
+MAX_READ = 128  # bytes per request; Tone Studio's own limit (SYSEX_MAXLEN)
+
+
 def refresh(connection):
 
-    # Group the single-byte settings into runs of consecutive addresses.
+    # Group the single-byte settings into runs of consecutive addresses,
+    # each short enough to ask for in one request.
     singles = sorted(
         (param for param in Param if param.size() == 1),
         key=lambda param: param.address(),
     )
     runs = []
     for param in singles:
-        if runs and param.address() == runs[-1][0] + len(runs[-1][1]):
+        if (
+            runs
+            and param.address() == runs[-1][0] + len(runs[-1][1])
+            and len(runs[-1][1]) < MAX_READ
+        ):
             runs[-1][1].append(param)
         else:
             runs.append((param.address(), [param]))

@@ -12,28 +12,17 @@ A .tsl file is JSON holding one or more patches, each a set of named byte
 blocks ("UserPatch%Patch_0", "UserPatch%Fx(1)", ...). Those blocks are the
 same bytes the amp keeps in memory, so a patch can be read here and sent
 straight to the amp.
+
+A block is stored as a plain run of bytes, but amp addresses skip from
+xx7F to the next xx00 (each address byte only counts to 127). So byte 128
+of the Fx(1) block lives at 0x200, not 0x180 - see katana.advance().
 """
 
 import json
 import time
 
-from katana_amp.katana import LIVE_BASE, KatanaError, decode_name
+from katana_amp.katana import LIVE_BASE, PATCH_BLOCKS, KatanaError, advance, decode_name
 from katana_amp.param import Param
-
-# Which memory offset each named block starts at, relative to the base of a
-# patch. Derived by matching the block contents against the amp's own layout.
-BLOCK_OFFSETS = {
-    "UserPatch%PatchName": 0x000,
-    "UserPatch%Patch_0": 0x010,
-    "UserPatch%Fx(1)": 0x100,
-    "UserPatch%Fx(2)": 0x300,
-    "UserPatch%Delay(1)": 0x500,
-    "UserPatch%Delay(2)": 0x520,
-    "UserPatch%Patch_1": 0x540,
-    "UserPatch%Patch_2": 0x600,
-    "UserPatch%Status": 0x650,
-    "UserPatch%KnobAsgn": 0x700,
-}
 
 
 class Patch:
@@ -49,11 +38,12 @@ class Patch:
         return decode_name(raw)
 
     def memory(self):
-        """Return {offset: byte} for everything this patch defines."""
+        """Return {address: byte} for everything this patch defines, at
+        the addresses the amp's live area would hold them."""
         image = {}
-        for block, start in BLOCK_OFFSETS.items():
-            for index, byte in enumerate(self.blocks.get(block, [])):
-                image[start + index] = byte
+        for block, (offset, _) in PATCH_BLOCKS.items():
+            for index, byte in enumerate(self.blocks.get(f"UserPatch%{block}", [])):
+                image[advance(LIVE_BASE + offset, index)] = byte
         return image
 
     def get(self, param):
@@ -66,8 +56,7 @@ class Patch:
         image = self.memory()
         found = {}
         for param in Param:
-            start = param.address() - LIVE_BASE
-            data = [image.get(start + index) for index in range(param.size())]
+            data = [image.get(advance(param.address(), index)) for index in range(param.size())]
             if None not in data:
                 found[param] = param.decode(data)
         return found
@@ -75,15 +64,16 @@ class Patch:
     def apply(self, amp, settle=0.02):
         """Load this patch by setting each named parameter individually.
 
-        Rather than copying the file's raw bytes - whose effect blocks do
-        not map one-to-one onto the amp's addresses - this walks the
-        parameters the file defines and writes each one through the normal
-        parameter path, which is known good for every section.
+        This walks the parameters the file defines and writes each one
+        through the normal parameter path, so every value is range-checked
+        on the way in.
 
         Only parameters this project has mapped are set; anything else in
-        the file is ignored. Returns (applied, skipped).
+        the file is ignored. Read-only ones (LEDs, knob positions) are
+        skipped too - the amp ignores writes to them. Returns (applied,
+        skipped).
         """
-        values = self.settings()
+        values = {param: value for param, value in self.settings().items() if param.is_writable()}
 
         # Effect switches last, so a section is configured before it is
         # switched on and you never hear a half-set effect.

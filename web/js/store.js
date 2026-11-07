@@ -27,7 +27,8 @@ const offlineDefaults = {
   pedal_switch: false, pedal_type: 0, wah_type: 0, wah_position: 20,
   wah_pedal_min: 0, wah_pedal_max: 100, wah_level: 60, wah_direct_mix: 0,
 
-  eq_switch: true, eq_type: false, eq_level: 24,
+  eq_switch: true, eq_type: 1, eq_level: 0,
+  send_return_switch: false,
 
   noise_suppressor_switch: true, noise_suppressor_threshold: 46,
   noise_suppressor_release: 52,

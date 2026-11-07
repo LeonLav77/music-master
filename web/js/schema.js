@@ -26,6 +26,14 @@ function fromServer(entry) {
     param.max = entry.max;
   }
   if (entry.unit) param.unit = entry.unit;
+  if (entry.steps) param.steps = entry.steps;
+  // FX-slot knobs: which slot, which effect TYPE they belong to, and the
+  // label Tone Studio gives them.
+  if (entry.slot) {
+    param.slot = entry.slot;
+    param.effect = entry.effect;
+    param.label = entry.label;
+  }
   return param;
 }
 
@@ -85,5 +93,5 @@ export const FOOTSWITCHES = [
   { cc: 18, label: "FX", block: "fx2_switch" },
   { cc: 19, label: "DELAY", block: "delay_switch" },
   { cc: 20, label: "REVERB", block: "reverb_switch" },
-  { cc: 21, label: "LOOP", block: null },
+  { cc: 21, label: "LOOP", block: "send_return_switch" },
 ];
