@@ -92,7 +92,7 @@ Param.AMP_TYPE.options()     # {0: 'Natural Clean', ..., 8: 'JC-120', ...}
 Param.KNOB_VOLUME.is_writable()   # False
 Param.EQ_BAND_1KHZ.unit()    # 'dB'
 Param.EQ_HIGH_CUT.steps()    # ('630 Hz', '800 Hz', ...) - what each step reads as
-list(Param)                  # all 553 of them
+list(Param)                  # all 660 of them
 ```
 
 Adding a setting means a new case, its arm in `address()`, and an arm in
@@ -275,11 +275,20 @@ five positions, with VARIATION off and on, and reading `amp_type` and
 
 Not reachable by MIDI (physical switches, per the official manual): POWER
 CONTROL and the bank A/B hold-switch. CAB RESONANCE *is* reachable, at
-`0x60000643`. STEREO EXPAND, line-out Air Feel and the global EQ are
-amp-wide settings in a separate system area from `0x00000000`; they are in
-Roland's map but not in `Param` yet. Tone Studio's TAP button sends a
-command to `0x7F010106` rather than setting a parameter; it is not wired up
-here yet either.
+`0x60000643`.
+
+**Amp-wide settings** (global EQ, STEREO EXPAND, line-out Air Feel and mic)
+live in a separate system area from `0x00000000`. They apply to every
+channel and are not saved in a patch. The USB audio settings there are
+deliberately left out of `Param`, because the Pi's tuner, recorder and
+backing tracks depend on them.
+
+**Panel buttons are commands, not settings.** Tone Studio "presses" one by
+writing `00` to `0x7F0101xx`: VARIATION, each block's colour button, and
+the two delay TAPs. That's `amp.press("delay_tap")` here, listed in
+`katana.PANEL_BUTTONS`. Tone Studio also puts the amp into an "editor
+communication mode" (`0x7F000001`) when it connects, which this project
+does not. If a button does nothing, that mode is the first suspect.
 
 ## Troubleshooting
 

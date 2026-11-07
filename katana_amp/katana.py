@@ -81,6 +81,23 @@ PATCH_BLOCKS = {
 }
 
 
+# The amp's front-panel buttons, as BOSS Tone Studio presses them: writing
+# 00 to one of these acts like pushing that button. They are commands, not
+# settings - nothing to read back. The colour buttons cycle green -> red ->
+# yellow, as on the panel; the TAPs set the delay time from the gap between
+# presses.
+PANEL_BUTTONS = {
+    "variation": 0x7F010100,
+    "boost": 0x7F010101,
+    "mod": 0x7F010102,
+    "fx": 0x7F010103,
+    "delay": 0x7F010104,
+    "reverb": 0x7F010105,
+    "delay_tap": 0x7F010106,
+    "delay2_tap": 0x7F010107,
+}
+
+
 def advance(address, count):
     """The address `count` bytes after `address`.
 
@@ -276,6 +293,13 @@ class Katana:
         if not low <= value <= high:
             raise KatanaError(f"{param} must be between {low} and {high}, got {value}")
         self.write(self._encode_address(param.address()), param.encode(value))
+
+    def press(self, button):
+        """Push a front-panel button (a name from PANEL_BUTTONS)."""
+        if button not in PANEL_BUTTONS:
+            known = ", ".join(PANEL_BUTTONS)
+            raise KatanaError(f"Unknown button {button!r}. Known: {known}")
+        self.write(self._encode_address(PANEL_BUTTONS[button]), [0x00])
 
     def select_channel(self, channel):
         """Switch tone-setting channel with a Program Change.

@@ -11,13 +11,58 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from katana_amp.katana import CHANNELS, Katana, KatanaError
+from katana_amp.katana import CHANNELS, PANEL_BUTTONS, Katana, KatanaError
 from katana_amp.param import Param
 from capture import RecorderError
 from playback import PlaybackError, TrackError
 from server import amp, audio, browsers, recorder, tuner, wifi
 
 router = APIRouter()
+
+# Which delay time each TAP sets, and how long after the last tap to read
+# it back - the amp only knows the tempo once you stop tapping.
+TAPS = {"delay_tap": Param.DELAY_TIME, "delay2_tap": Param.DELAY2_TIME}
+TAP_SETTLE = 1.5
+_tap_readback = None
+
+
+async def _refresh_everyone():
+    """Re-read the whole amp and send it to every browser. For changes that
+    move many settings at once (a colour switch loads another effect)."""
+    await asyncio.sleep(0.3)
+    values = await amp.call(amp.refresh, read=True)
+    await browsers.broadcast(amp.state_message())
+    return values
+
+
+async def _read_tap(param):
+    """After the taps stop, read the delay time they set."""
+    await asyncio.sleep(TAP_SETTLE)
+    try:
+        async with amp.lock:
+            value = await amp.call(Katana.get_parameter, param, read=True)
+    except KatanaError:
+        return  # the amp went away; the reconnect loop re-reads everything
+    amp.cache[param.value] = value
+    await browsers.broadcast({"type": "parameter", "name": param.value, "value": value})
+
+
+async def _press(button):
+    global _tap_readback
+    if button not in PANEL_BUTTONS:
+        raise KatanaError(f"Unknown button {button!r}")
+    if button in TAPS:
+        # No re-read between taps: it would hold the line and spoil the
+        # timing. Each tap restarts the countdown to one read at the end.
+        async with amp.lock:
+            await amp.call(Katana.press, button)
+        if _tap_readback is not None:
+            _tap_readback.cancel()
+        _tap_readback = asyncio.create_task(_read_tap(TAPS[button]))
+        return
+    async with amp.lock:
+        await amp.call(Katana.press, button)
+        await _refresh_everyone()
 
 
 async def _apply_parameter(name, value, origin=None):
@@ -34,6 +79,11 @@ async def _apply_parameter(name, value, origin=None):
 
     async with amp.lock:
         await amp.call(Katana.set_parameter, param, value)
+        if name.startswith("color_select_"):
+            # Switching colour loads that colour's effect and its settings,
+            # so everything in the block has just changed.
+            await _refresh_everyone()
+            return value
 
     amp.cache[name] = value
     await browsers.broadcast(
@@ -118,6 +168,15 @@ async def websocket(client: WebSocket):
                 try:
                     await recorder.handle(message)
                 except (RecorderError, KeyError, ValueError) as exc:
+                    await client.send_text(
+                        json.dumps({"type": "error", "detail": str(exc)})
+                    )
+                continue
+
+            if message_type == "press":
+                try:
+                    await _press(message["button"])
+                except (KatanaError, KeyError) as exc:
                     await client.send_text(
                         json.dumps({"type": "error", "detail": str(exc)})
                     )

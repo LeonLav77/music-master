@@ -123,6 +123,12 @@ export const transport = {
     }).catch((error) => console.error("[katana]", error));
   },
 
+  /** Push one of the amp's front-panel buttons ("delay_tap", "variation",
+   *  "mod" to cycle MOD's colour, ...). See katana.PANEL_BUTTONS. */
+  press(button) {
+    sendMessage({ type: "press", button });
+  },
+
   /** Switch tone-setting channel. The amp reloads, so a whole new state follows. */
   selectChannel(id) {
     sendMessage({ type: "channel", name: id });

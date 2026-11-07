@@ -1,7 +1,7 @@
 # Katana MkII — Control Reference
 
 Every control this project can reach, for designing the web UI.
-**553 parameters**, generated from `Param` (the same data
+**660 parameters**, generated from `Param` (the same data
 `GET /api/parameters` serves), so it cannot drift from the code.
 
 The source for every address, range and label is Roland's own address map,
@@ -210,6 +210,168 @@ with boosted extremes.
 
 ---
 
+## Second EQ (EQ 2)
+
+A whole second EQ, same layout and ranges as the first, with its own
+position. In the UI: the EQ setup sheet's second tab.
+
+| Parameter | Type | Range | Notes |
+|---|---|---|---|
+| `eq2_switch` | toggle | off / on |  |
+| `eq2_type` | enum | 2 choices |  |
+| `eq2_position` | enum | 2 choices |  |
+| `eq2_low_cut` | range | FLAT … 800 Hz |  |
+| `eq2_low_gain` | range | -20 … 20 dB | stored +20 |
+| `eq2_low_mid_freq` | range | 20.0 Hz … 10.0 kHz |  |
+| `eq2_low_mid_q` | range | 0.5 … 16 |  |
+| `eq2_low_mid_gain` | range | -20 … 20 dB | stored +20 |
+| `eq2_high_mid_freq` | range | 20.0 Hz … 10.0 kHz |  |
+| `eq2_high_mid_q` | range | 0.5 … 16 |  |
+| `eq2_high_mid_gain` | range | -20 … 20 dB | stored +20 |
+| `eq2_high_gain` | range | -20 … 20 dB | stored +20 |
+| `eq2_high_cut` | range | 630 Hz … FLAT |  |
+| `eq2_peq_level` | range | -20 … 20 dB | stored +20 |
+| `eq2_band_31hz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_62hz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_125hz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_250hz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_500hz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_1khz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_2khz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_4khz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_8khz` | range | -24 … 24 dB | stored +24 |
+| `eq2_band_16khz` | range | -24 … 24 dB | stored +24 |
+| `eq2_level` | range | -24 … 24 dB | stored +24 |
+
+---
+
+## Solo — EQ and delay
+
+SOLO (`solo_switch`, `solo_level`, under Amp) can bring its own EQ and
+delay with it. The solo EQ's gains go to ±24 dB, not ±20 like the others.
+Its position setting is left out: Tone Studio shows its two values as
+icons, with no names to go by.
+
+| Parameter | Type | Range | Notes |
+|---|---|---|---|
+| `solo_eq_switch` | toggle | off / on |  |
+| `solo_eq_low_cut` | range | FLAT … 800 Hz |  |
+| `solo_eq_low_gain` | range | -24 … 24 dB | stored +24 |
+| `solo_eq_mid_freq` | range | 20.0 Hz … 10.0 kHz |  |
+| `solo_eq_mid_q` | range | 0.5 … 16 |  |
+| `solo_eq_mid_gain` | range | -24 … 24 dB | stored +24 |
+| `solo_eq_high_gain` | range | -24 … 24 dB | stored +24 |
+| `solo_eq_high_cut` | range | 630 Hz … FLAT |  |
+| `solo_eq_level` | range | -24 … 24 dB | stored +24 |
+| `solo_delay_switch` | toggle | off / on |  |
+| `solo_delay_carryover` | toggle | off / on |  |
+| `solo_delay_time` | range | 1 … 2000 ms | 2 bytes |
+| `solo_delay_feedback` | range | 0 … 100 |  |
+| `solo_delay_level` | range | 0 … 120 |  |
+| `solo_delay_direct_mix` | range | 0 … 100 |  |
+| `solo_delay_filter` | enum | 3 choices |  |
+| `solo_delay_high_cut` | range | 630 Hz … FLAT |  |
+| `solo_delay_mod_switch` | toggle | off / on |  |
+| `solo_delay_mod_rate` | range | 0 … 100 |  |
+| `solo_delay_mod_depth` | range | 0 … 100 |  |
+
+---
+
+## Amp-wide (system) settings
+
+Not part of any channel: these apply to every channel, survive channel
+switches, and are not saved into a patch. They live in a separate area
+from `0x00000000`. The USB audio settings in that area are deliberately
+**not** included — the Pi's tuner, recorder and backing tracks depend on
+them, and one wrong slider would break that.
+
+| Parameter | Type | Range | Notes |
+|---|---|---|---|
+| `global_eq_switch` | toggle | off / on |  |
+| `global_eq_type` | enum | 2 choices |  |
+| `global_eq_position` | enum | 4 choices |  |
+| `global_eq_low_cut` | range | FLAT … 800 Hz |  |
+| `global_eq_low_gain` | range | -20 … 20 dB | stored +20 |
+| `global_eq_low_mid_freq` | range | 20.0 Hz … 10.0 kHz |  |
+| `global_eq_low_mid_q` | range | 0.5 … 16 |  |
+| `global_eq_low_mid_gain` | range | -20 … 20 dB | stored +20 |
+| `global_eq_high_mid_freq` | range | 20.0 Hz … 10.0 kHz |  |
+| `global_eq_high_mid_q` | range | 0.5 … 16 |  |
+| `global_eq_high_mid_gain` | range | -20 … 20 dB | stored +20 |
+| `global_eq_high_gain` | range | -20 … 20 dB | stored +20 |
+| `global_eq_high_cut` | range | 630 Hz … FLAT |  |
+| `global_eq_peq_level` | range | -20 … 20 dB | stored +20 |
+| `global_eq_band_31hz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_62hz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_125hz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_250hz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_500hz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_1khz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_2khz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_4khz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_8khz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_band_16khz` | range | -24 … 24 dB | stored +24 |
+| `global_eq_level` | range | -24 … 24 dB | stored +24 |
+| `global_eq_select` | enum | 3 choices |  |
+| `line_out_air_feel` | enum | 3 choices |  |
+| `stereo_expand` | toggle | off / on |  |
+| `line_out_custom_switch` | toggle | off / on |  |
+| `line_out_custom_select` | enum | 2 choices |  |
+| `line_out_custom1_mic_type` | enum | 5 choices |  |
+| `line_out_custom1_mic_distance` | range | 0 cm … 20 cm |  |
+| `line_out_custom1_mic_position` | range | 0 cm … 10 cm |  |
+| `line_out_custom2_mic_type` | enum | 5 choices |  |
+| `line_out_custom2_mic_distance` | range | 0 cm … 20 cm |  |
+| `line_out_custom2_mic_position` | range | 0 cm … 10 cm |  |
+
+**Global EQ memory**: three stored global EQs, named by colour; the
+`global_eq_*` settings are the one currently loaded.
+
+---
+
+## Colour channels
+
+Each block's panel button cycles green → red → yellow, and each colour
+holds its own effect type. `color_<block>_<colour>` is which effect that
+colour holds, `color_select_<block>` which colour the block is on now —
+writing it switches colour, which loads that colour's effect, so the
+server re-reads the amp afterwards. `color_layer_<colour>` is what the
+delay/reverb knob does on each colour.
+
+| Parameter | Type | Range | Notes |
+|---|---|---|---|
+| `color_boost_green` | enum | 23 choices |  |
+| `color_boost_red` | enum | 23 choices |  |
+| `color_boost_yellow` | enum | 23 choices |  |
+| `color_mod_green` | enum | 31 choices |  |
+| `color_mod_red` | enum | 31 choices |  |
+| `color_mod_yellow` | enum | 31 choices |  |
+| `color_fx_green` | enum | 31 choices |  |
+| `color_fx_red` | enum | 31 choices |  |
+| `color_fx_yellow` | enum | 31 choices |  |
+| `color_delay_green` | enum | 8 choices |  |
+| `color_delay_red` | enum | 8 choices |  |
+| `color_delay_yellow` | enum | 8 choices |  |
+| `color_reverb_green` | enum | 5 choices |  |
+| `color_reverb_red` | enum | 5 choices |  |
+| `color_reverb_yellow` | enum | 5 choices |  |
+| `color_delay2_green` | enum | 8 choices |  |
+| `color_delay2_red` | enum | 8 choices |  |
+| `color_delay2_yellow` | enum | 8 choices |  |
+| `color_layer_green` | enum | 3 choices |  |
+| `color_layer_red` | enum | 3 choices |  |
+| `color_layer_yellow` | enum | 3 choices |  |
+| `color_select_boost` | enum | 3 choices |  |
+| `color_select_mod` | enum | 3 choices |  |
+| `color_select_fx` | enum | 3 choices |  |
+| `color_select_delay` | enum | 3 choices |  |
+| `color_select_reverb` | enum | 3 choices |  |
+
+The editors for boost, MOD, FX, delay and reverb each show a **Colour**
+row bound to `color_select_*`.
+
+---
+
 ## Effects loop (SEND / RETURN)
 
 | Parameter | Type | Range | Notes |
@@ -354,6 +516,25 @@ Every block of the patch is copied (Roland's block list, in
 loaded. A patch browser — file, patch names, preview of the settings, load
 button — is a strong feature and the data is already there.
 
+## Panel buttons
+
+Not settings but commands: Tone Studio "presses" a front-panel button by
+writing `00` to an address in `0x7F0101xx`. `Katana.press(name)`, or the
+WebSocket message `{"type": "press", "button": name}`.
+
+| Button | Address | Does |
+|---|---|---|
+| `variation` | `0x7F010100` | VARIATION on/off |
+| `boost` … `reverb` | `0x7F010101`–`05` | cycle that block's colour |
+| `delay_tap` | `0x7F010106` | TAP tempo, delay 1 |
+| `delay2_tap` | `0x7F010107` | TAP tempo, delay 2 |
+
+After a TAP the server waits until the taps stop, then reads the delay
+time back. After any other button it re-reads the whole amp. Tone Studio
+also switches the amp into an "editor communication mode" (`0x7F000001`)
+when it connects; this project does not, so if a button does nothing,
+that mode is the first suspect.
+
 ## Effect switching by CC
 
 The amp also accepts the footswitch messages, which is what a
@@ -385,15 +566,16 @@ refresh asks for no more than that per request.)
 
 **3. Some things are read-only.** `knob_volume`, `panel_amp_type`,
 `variation` and the five LEDs report state the amp will not let MIDI
-change. Render as indicators.
+change as settings. Render as indicators (VARIATION itself can be pressed
+as a panel button).
 
 ## Not reachable at all
 
 Physical switches, per the official manual — no MIDI for any of them:
 POWER CONTROL (0.5W / 50W / 100W) and the bank A/B hold-switch.
 
-In Roland's map but not in `Param` yet: the system area from `0x00000000`
-(global EQ, STEREO EXPAND, line-out Air Feel, USB levels), the second EQ
-(`Eq(2)`), solo EQ / solo delay, the per-colour effect assignments, knob
-and pedal assignments, and the panel button commands at `0x7F0101xx`
-(including delay TAP).
+In Roland's map but deliberately not in `Param`: the USB audio settings
+(the Pi depends on them), the half-power adjust, the GA-FC foot controller
+and expression pedal functions and assignments, the knob assignments, the
+chain pattern (Tone Studio labels it only with pictures) and the solo EQ's
+position (same reason).

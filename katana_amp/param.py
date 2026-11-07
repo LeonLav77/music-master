@@ -23,15 +23,29 @@ from enum import StrEnum
 from katana_amp.effects import EFFECTS, HIGH_CUT, LOW_CUT, FREQUENCY, Q, SLOT_BASE
 from katana_amp.kind import Kind
 
-# Delay 2 is the same 26-byte block as delay 1, 0x20 further on.
-DELAY2_SHIFT = 0x20
+# Settings that copy another setting's layout: (prefix, twin prefix, how
+# far away it lives). delay2_feedback is delay_feedback 0x20 on; the global
+# EQ is the main EQ moved into the system area (its switch, type and
+# position sit differently, so address() lists those three itself).
+TWINS = (
+    ("delay2_", "delay_", 0x20),
+    ("eq2_", "eq_", 0x20),
+    ("global_eq_", "eq_", 0x00000013 - 0x60000042),
+)
+# Same prefix, but a setting of their own rather than a copy.
+NOT_TWINS = ("eq2_position", "global_eq_position", "global_eq_select")
+
+# The colour-channel blocks, in the order the amp stores them.
+COLOUR_BLOCKS = ("boost", "mod", "fx", "delay", "reverb", "delay2")
+COLOURS = ("green", "red", "yellow")
+COLOUR_BASE = 0x60000624
 
 
 class Param(StrEnum):
     # Names used only while the class body runs (the effect loop at the end).
     # Enum deletes these from the class afterwards, so none may clash with a
     # method name.
-    _ignore_ = "members slot fx_effect fx_knob"
+    _ignore_ = "members slot fx_effect fx_knob colour_block colour"
 
     # --- Amp -------------------------------------------------------------
     AMP_TYPE = "amp_type"
@@ -195,6 +209,101 @@ class Param(StrEnum):
     # The key the Harmonist harmonises in (both slots share it).
     MASTER_KEY = "master_key"
 
+    # --- Second EQ (EQ2) ---------------------------------------------------
+    # A whole second EQ, same layout as the first, 0x20 further on. Only its
+    # position lives elsewhere. Ranges etc. come from the eq_ twin.
+    EQ2_SWITCH = "eq2_switch"
+    EQ2_TYPE = "eq2_type"
+    EQ2_POSITION = "eq2_position"
+    EQ2_LOW_CUT = "eq2_low_cut"
+    EQ2_LOW_GAIN = "eq2_low_gain"
+    EQ2_LOW_MID_FREQ = "eq2_low_mid_freq"
+    EQ2_LOW_MID_Q = "eq2_low_mid_q"
+    EQ2_LOW_MID_GAIN = "eq2_low_mid_gain"
+    EQ2_HIGH_MID_FREQ = "eq2_high_mid_freq"
+    EQ2_HIGH_MID_Q = "eq2_high_mid_q"
+    EQ2_HIGH_MID_GAIN = "eq2_high_mid_gain"
+    EQ2_HIGH_GAIN = "eq2_high_gain"
+    EQ2_HIGH_CUT = "eq2_high_cut"
+    EQ2_PEQ_LEVEL = "eq2_peq_level"
+    EQ2_BAND_31HZ = "eq2_band_31hz"
+    EQ2_BAND_62HZ = "eq2_band_62hz"
+    EQ2_BAND_125HZ = "eq2_band_125hz"
+    EQ2_BAND_250HZ = "eq2_band_250hz"
+    EQ2_BAND_500HZ = "eq2_band_500hz"
+    EQ2_BAND_1KHZ = "eq2_band_1khz"
+    EQ2_BAND_2KHZ = "eq2_band_2khz"
+    EQ2_BAND_4KHZ = "eq2_band_4khz"
+    EQ2_BAND_8KHZ = "eq2_band_8khz"
+    EQ2_BAND_16KHZ = "eq2_band_16khz"
+    EQ2_LEVEL = "eq2_level"
+
+    # --- Solo EQ / solo delay ----------------------------------------------
+    # Extra EQ and delay that come in with SOLO. (The solo EQ's position is
+    # left out: Tone Studio shows its two values as icons, with no names.)
+    SOLO_EQ_SWITCH = "solo_eq_switch"
+    SOLO_EQ_LOW_CUT = "solo_eq_low_cut"
+    SOLO_EQ_LOW_GAIN = "solo_eq_low_gain"
+    SOLO_EQ_MID_FREQ = "solo_eq_mid_freq"
+    SOLO_EQ_MID_Q = "solo_eq_mid_q"
+    SOLO_EQ_MID_GAIN = "solo_eq_mid_gain"
+    SOLO_EQ_HIGH_GAIN = "solo_eq_high_gain"
+    SOLO_EQ_HIGH_CUT = "solo_eq_high_cut"
+    SOLO_EQ_LEVEL = "solo_eq_level"
+    SOLO_DELAY_SWITCH = "solo_delay_switch"
+    SOLO_DELAY_CARRYOVER = "solo_delay_carryover"   # let echoes ring on after solo is switched off
+    SOLO_DELAY_TIME = "solo_delay_time"
+    SOLO_DELAY_FEEDBACK = "solo_delay_feedback"
+    SOLO_DELAY_LEVEL = "solo_delay_level"
+    SOLO_DELAY_DIRECT_MIX = "solo_delay_direct_mix"
+    SOLO_DELAY_FILTER = "solo_delay_filter"
+    SOLO_DELAY_HIGH_CUT = "solo_delay_high_cut"
+    SOLO_DELAY_MOD_SWITCH = "solo_delay_mod_switch"
+    SOLO_DELAY_MOD_RATE = "solo_delay_mod_rate"
+    SOLO_DELAY_MOD_DEPTH = "solo_delay_mod_depth"
+
+    # --- Amp-wide (system) settings ----------------------------------------
+    # Not part of any channel: these apply to every channel and survive
+    # switching. They live in a separate area from 0x00000000. The USB audio
+    # settings there are deliberately absent - the Pi's tuner, recorder and
+    # backing tracks depend on them.
+    GLOBAL_EQ_SWITCH = "global_eq_switch"
+    GLOBAL_EQ_TYPE = "global_eq_type"
+    GLOBAL_EQ_POSITION = "global_eq_position"
+    GLOBAL_EQ_LOW_CUT = "global_eq_low_cut"
+    GLOBAL_EQ_LOW_GAIN = "global_eq_low_gain"
+    GLOBAL_EQ_LOW_MID_FREQ = "global_eq_low_mid_freq"
+    GLOBAL_EQ_LOW_MID_Q = "global_eq_low_mid_q"
+    GLOBAL_EQ_LOW_MID_GAIN = "global_eq_low_mid_gain"
+    GLOBAL_EQ_HIGH_MID_FREQ = "global_eq_high_mid_freq"
+    GLOBAL_EQ_HIGH_MID_Q = "global_eq_high_mid_q"
+    GLOBAL_EQ_HIGH_MID_GAIN = "global_eq_high_mid_gain"
+    GLOBAL_EQ_HIGH_GAIN = "global_eq_high_gain"
+    GLOBAL_EQ_HIGH_CUT = "global_eq_high_cut"
+    GLOBAL_EQ_PEQ_LEVEL = "global_eq_peq_level"
+    GLOBAL_EQ_BAND_31HZ = "global_eq_band_31hz"
+    GLOBAL_EQ_BAND_62HZ = "global_eq_band_62hz"
+    GLOBAL_EQ_BAND_125HZ = "global_eq_band_125hz"
+    GLOBAL_EQ_BAND_250HZ = "global_eq_band_250hz"
+    GLOBAL_EQ_BAND_500HZ = "global_eq_band_500hz"
+    GLOBAL_EQ_BAND_1KHZ = "global_eq_band_1khz"
+    GLOBAL_EQ_BAND_2KHZ = "global_eq_band_2khz"
+    GLOBAL_EQ_BAND_4KHZ = "global_eq_band_4khz"
+    GLOBAL_EQ_BAND_8KHZ = "global_eq_band_8khz"
+    GLOBAL_EQ_BAND_16KHZ = "global_eq_band_16khz"
+    GLOBAL_EQ_LEVEL = "global_eq_level"
+    GLOBAL_EQ_SELECT = "global_eq_select"           # which of three stored global EQs is loaded
+    LINE_OUT_AIR_FEEL = "line_out_air_feel"
+    STEREO_EXPAND = "stereo_expand"
+    LINE_OUT_CUSTOM_SWITCH = "line_out_custom_switch"
+    LINE_OUT_CUSTOM_SELECT = "line_out_custom_select"
+    LINE_OUT_CUSTOM1_MIC_TYPE = "line_out_custom1_mic_type"
+    LINE_OUT_CUSTOM1_MIC_DISTANCE = "line_out_custom1_mic_distance"
+    LINE_OUT_CUSTOM1_MIC_POSITION = "line_out_custom1_mic_position"
+    LINE_OUT_CUSTOM2_MIC_TYPE = "line_out_custom2_mic_type"
+    LINE_OUT_CUSTOM2_MIC_DISTANCE = "line_out_custom2_mic_distance"
+    LINE_OUT_CUSTOM2_MIC_POSITION = "line_out_custom2_mic_position"
+
     # --- Channel / colour state --------------------------------------------
     # These store and read back, but writing them does NOT change the panel
     # LEDs or the sound on a MkII - tested on hardware. They appear to be a
@@ -217,6 +326,19 @@ class Param(StrEnum):
             for fx_knob in fx_effect.knobs:
                 members[f"FX{slot}_{fx_effect.key}_{fx_knob.key}".upper()] = f"fx{slot}_{fx_effect.key}_{fx_knob.key}"
 
+    # --- Colour channels -----------------------------------------------------
+    # Each block's panel button cycles green/red/yellow, and each colour
+    # holds its own effect type: COLOR_MOD_RED = which effect MOD's red is.
+    # COLOR_SELECT_MOD = which colour MOD is on now (writing it switches).
+    # COLOR_LAYER_* = what the delay/reverb knob does on each colour.
+    for colour_block in COLOUR_BLOCKS:
+        for colour in COLOURS:
+            members[f"COLOR_{colour_block}_{colour}".upper()] = f"color_{colour_block}_{colour}"
+    for colour in COLOURS:
+        members[f"COLOR_LAYER_{colour}".upper()] = f"color_layer_{colour}"
+    for colour_block in COLOUR_BLOCKS[:5]:
+        members[f"COLOR_SELECT_{colour_block}".upper()] = f"color_select_{colour_block}"
+
     # --- Where it lives on the amp ----------------------------------------
 
     def address(self) -> int:
@@ -225,8 +347,8 @@ class Param(StrEnum):
             slot, _, knob = EFFECT_KNOBS[self]
             # The slot bases end in 00, so adding never carries past 0x7F.
             return SLOT_BASE[slot] + knob.offset
-        if self.value.startswith("delay2_"):
-            return self.delay1().address() + DELAY2_SHIFT
+        if self in COLOUR_SETTINGS:
+            return COLOUR_SETTINGS[self][0]
         match self:
             case Param.BOOST_SWITCH:               return 0x60000010
             case Param.BOOST_TYPE:                 return 0x60000011
@@ -346,20 +468,61 @@ class Param(StrEnum):
             case Param.CONTOUR2_FREQ_SHIFT:        return 0x60000F39
             case Param.CONTOUR3_TYPE:              return 0x60000F40
             case Param.CONTOUR3_FREQ_SHIFT:        return 0x60000F41
+            case Param.SOLO_EQ_SWITCH:             return 0x60000F11
+            case Param.SOLO_EQ_LOW_CUT:            return 0x60000F12
+            case Param.SOLO_EQ_LOW_GAIN:           return 0x60000F13
+            case Param.SOLO_EQ_MID_FREQ:           return 0x60000F14
+            case Param.SOLO_EQ_MID_Q:              return 0x60000F15
+            case Param.SOLO_EQ_MID_GAIN:           return 0x60000F16
+            case Param.SOLO_EQ_HIGH_GAIN:          return 0x60000F17
+            case Param.SOLO_EQ_HIGH_CUT:           return 0x60000F18
+            case Param.SOLO_EQ_LEVEL:              return 0x60000F19
+            case Param.SOLO_DELAY_SWITCH:          return 0x60000F1A
+            case Param.SOLO_DELAY_CARRYOVER:       return 0x60000F1B
+            case Param.SOLO_DELAY_TIME:            return 0x60000F1C
+            case Param.SOLO_DELAY_FEEDBACK:        return 0x60000F1E
+            case Param.SOLO_DELAY_LEVEL:           return 0x60000F1F
+            case Param.SOLO_DELAY_DIRECT_MIX:      return 0x60000F20
+            case Param.SOLO_DELAY_FILTER:          return 0x60000F21
+            case Param.SOLO_DELAY_HIGH_CUT:        return 0x60000F22
+            case Param.SOLO_DELAY_MOD_SWITCH:      return 0x60000F23
+            case Param.SOLO_DELAY_MOD_RATE:        return 0x60000F24
+            case Param.SOLO_DELAY_MOD_DEPTH:       return 0x60000F25
+            case Param.EQ2_POSITION:               return 0x60000619
+            # The system area, from 0x00000000.
+            case Param.GLOBAL_EQ_SWITCH:           return 0x00000010
+            case Param.GLOBAL_EQ_TYPE:             return 0x00000011
+            case Param.GLOBAL_EQ_POSITION:         return 0x00000012
+            case Param.LINE_OUT_AIR_FEEL:          return 0x00000029
+            case Param.STEREO_EXPAND:              return 0x0000002A
+            case Param.GLOBAL_EQ_SELECT:           return 0x0000002E
+            case Param.LINE_OUT_CUSTOM_SWITCH:     return 0x00000110
+            case Param.LINE_OUT_CUSTOM_SELECT:     return 0x00000111
+            case Param.LINE_OUT_CUSTOM1_MIC_TYPE:  return 0x00000112
+            case Param.LINE_OUT_CUSTOM1_MIC_DISTANCE:  return 0x00000113
+            case Param.LINE_OUT_CUSTOM1_MIC_POSITION:  return 0x00000114
+            case Param.LINE_OUT_CUSTOM2_MIC_TYPE:  return 0x00000118
+            case Param.LINE_OUT_CUSTOM2_MIC_DISTANCE:  return 0x00000119
+            case Param.LINE_OUT_CUSTOM2_MIC_POSITION:  return 0x0000011A
+        # Not listed above: a copy of another setting's layout.
+        twin, shift = self.twin_and_shift()
+        return twin.address() + shift
 
     def size(self) -> int:
         """Bytes the amp stores it in. Two bytes are 7-bit halves."""
         if self in EFFECT_KNOBS:
             return EFFECT_KNOBS[self][2].size
-        if self.value.startswith("delay2_"):
-            return self.delay1().size()
-        return 2 if self in (Param.DELAY_TIME, Param.REVERB_PRE_DELAY) else 1
+        if self.twin() is not None:
+            return self.twin().size()
+        return 2 if self in (Param.DELAY_TIME, Param.REVERB_PRE_DELAY, Param.SOLO_DELAY_TIME) else 1
 
     def offset(self) -> int:
         """What the amp adds before storing it, e.g. 24 for a -24..+24 dB
         band stored as 0-48. Real value = stored - offset."""
         if self in EFFECT_KNOBS:
             return EFFECT_KNOBS[self][2].stored_offset
+        if self.twin() is not None:
+            return self.twin().offset()
         match self:
             case _ if self.is_eq_band() or self is Param.EQ_LEVEL:  return 24
             case (
@@ -372,7 +535,12 @@ class Param(StrEnum):
                 Param.CONTOUR2_FREQ_SHIFT | Param.CONTOUR3_FREQ_SHIFT
             ):
                 return 50
-            case Param.PEDAL_BEND_PITCH:  return 24
+            # The solo EQ's gains go to +-24, not +-20 like the other EQs.
+            case (
+                Param.PEDAL_BEND_PITCH | Param.SOLO_EQ_LOW_GAIN | Param.SOLO_EQ_MID_GAIN |
+                Param.SOLO_EQ_HIGH_GAIN | Param.SOLO_EQ_LEVEL
+            ):
+                return 24
             # Reverb time shows 1-100 (0.1 s steps) but is stored 0-99.
             case Param.REVERB_TIME:       return -1
             case _:                       return 0
@@ -382,10 +550,15 @@ class Param(StrEnum):
     def kind(self) -> Kind:
         if self in EFFECT_KNOBS:
             return EFFECT_KNOBS[self][2].kind()
+        if self.twin() is not None:
+            return self.twin().kind()
         match self:
             case _ if self.options() is not None:  return Kind.ENUM
             case _ if self.value.endswith("_switch"):  return Kind.TOGGLE
-            case Param.BRIGHT | Param.VARIATION | Param.DELAY_SDE_FILTER | Param.DELAY2_SDE_FILTER:
+            case (
+                Param.BRIGHT | Param.VARIATION | Param.DELAY_SDE_FILTER |
+                Param.SOLO_DELAY_CARRYOVER | Param.STEREO_EXPAND
+            ):
                 return Kind.TOGGLE
             case _:
                 return Kind.RANGE
@@ -395,8 +568,12 @@ class Param(StrEnum):
         if self in EFFECT_KNOBS:
             knob = EFFECT_KNOBS[self][2]
             return (knob.low, knob.high)
-        if self.value.startswith("delay2_"):
-            return self.delay1().range()
+        if self.twin() is not None:
+            return self.twin().range()
+        if self in COLOUR_SETTINGS:
+            source = COLOUR_SETTINGS[self][1]
+            # A colour's effect type has the same range as the block's own type.
+            return source.range() if isinstance(source, Param) else (0, len(source) - 1)
         match self:
             # The amp accepts numbers Tone Studio never offers (the gaps in
             # the option lists), so these go wider than their option tables.
@@ -420,12 +597,16 @@ class Param(StrEnum):
             ):
                 return (-20, 20)
             case _ if self.steps() is not None:             return (0, len(self.steps()) - 1)
-            case Param.DELAY_TIME:                          return (1, 2000)
-            case Param.DELAY_LEVEL:                         return (0, 120)
+            case Param.DELAY_TIME | Param.SOLO_DELAY_TIME:  return (1, 2000)
+            case Param.DELAY_LEVEL | Param.SOLO_DELAY_LEVEL:  return (0, 120)
             case Param.REVERB_TIME:                         return (1, 100)
             case Param.REVERB_PRE_DELAY:                    return (0, 500)
             case Param.REVERB_DENSITY:                      return (0, 10)
-            case Param.PEDAL_BEND_PITCH:                    return (-24, 24)
+            case (
+                Param.PEDAL_BEND_PITCH | Param.SOLO_EQ_LOW_GAIN | Param.SOLO_EQ_MID_GAIN |
+                Param.SOLO_EQ_HIGH_GAIN | Param.SOLO_EQ_LEVEL
+            ):
+                return (-24, 24)
             case _:                                         return (0, 100)
 
     def unit(self) -> str | None:
@@ -437,12 +618,15 @@ class Param(StrEnum):
             if knob.key.startswith("pre_delay") or knob.key == "echo_repeat_rate":
                 return "ms"
             return None
+        if self.twin() is not None:
+            return self.twin().unit()
         match self:
-            case Param.DELAY_TIME | Param.DELAY2_TIME | Param.REVERB_PRE_DELAY:  return "ms"
+            case Param.DELAY_TIME | Param.REVERB_PRE_DELAY | Param.SOLO_DELAY_TIME:  return "ms"
             case _ if self.is_eq_band() or self is Param.EQ_LEVEL:               return "dB"
             case (
                 Param.EQ_LOW_GAIN | Param.EQ_LOW_MID_GAIN | Param.EQ_HIGH_MID_GAIN |
-                Param.EQ_HIGH_GAIN | Param.EQ_PEQ_LEVEL
+                Param.EQ_HIGH_GAIN | Param.EQ_PEQ_LEVEL | Param.SOLO_EQ_LOW_GAIN |
+                Param.SOLO_EQ_MID_GAIN | Param.SOLO_EQ_HIGH_GAIN | Param.SOLO_EQ_LEVEL
             ):
                 return "dB"
             case _:                                     return None
@@ -456,21 +640,32 @@ class Param(StrEnum):
         Studio prints instead of the raw number ("1.25 kHz", not 19)."""
         if self in EFFECT_KNOBS:
             return EFFECT_KNOBS[self][2].steps
-        if self.value.startswith("delay2_"):
-            return self.delay1().steps()
+        if self.twin() is not None:
+            return self.twin().steps()
         match self:
-            case Param.EQ_LOW_CUT | Param.REVERB_LOW_CUT:   return LOW_CUT
-            case Param.EQ_LOW_MID_FREQ | Param.EQ_HIGH_MID_FREQ:  return FREQUENCY
-            case Param.EQ_LOW_MID_Q | Param.EQ_HIGH_MID_Q:  return Q
-            case Param.EQ_HIGH_CUT | Param.REVERB_HIGH_CUT | Param.DELAY_HIGH_CUT:  return HIGH_CUT
+            case Param.EQ_LOW_CUT | Param.REVERB_LOW_CUT | Param.SOLO_EQ_LOW_CUT:  return LOW_CUT
+            case Param.EQ_LOW_MID_FREQ | Param.EQ_HIGH_MID_FREQ | Param.SOLO_EQ_MID_FREQ:  return FREQUENCY
+            case Param.EQ_LOW_MID_Q | Param.EQ_HIGH_MID_Q | Param.SOLO_EQ_MID_Q:  return Q
+            case (
+                Param.EQ_HIGH_CUT | Param.REVERB_HIGH_CUT | Param.DELAY_HIGH_CUT |
+                Param.SOLO_EQ_HIGH_CUT | Param.SOLO_DELAY_HIGH_CUT
+            ):
+                return HIGH_CUT
+            case Param.LINE_OUT_CUSTOM1_MIC_DISTANCE | Param.LINE_OUT_CUSTOM2_MIC_DISTANCE:
+                return tuple(f"{centimetres} cm" for centimetres in range(21))
+            case Param.LINE_OUT_CUSTOM1_MIC_POSITION | Param.LINE_OUT_CUSTOM2_MIC_POSITION:
+                return tuple(f"{centimetres} cm" for centimetres in range(11))
             case _:                                         return None
 
     def options(self) -> dict[int, str] | None:
         """The named values of a setting that is one of a set."""
         if self in EFFECT_KNOBS:
             return EFFECT_KNOBS[self][2].options
-        if self.value.startswith("delay2_"):
-            return self.delay1().options()
+        if self.twin() is not None:
+            return self.twin().options()
+        if self in COLOUR_SETTINGS:
+            source = COLOUR_SETTINGS[self][1]
+            return source.options() if isinstance(source, Param) else source
         match self:
             case Param.AMP_TYPE:
                 # The preamp models. The front-panel knob selects five of these; the
@@ -580,6 +775,21 @@ class Param(StrEnum):
                     4: "E (C#m)", 5: "F (Dm)", 6: "F# (D#m)", 7: "G (Em)",
                     8: "Ab (Fm)", 9: "A (F#m)", 10: "Bb (Gm)", 11: "B (G#m)",
                 }
+            case Param.EQ2_POSITION:
+                return {0: "Amp In", 1: "Amp Out"}
+            case Param.SOLO_DELAY_FILTER:
+                return {0: "Off", 1: "Analog", 2: "Tape Echo"}
+            case Param.GLOBAL_EQ_POSITION:
+                return {0: "Input", 1: "Output", 2: "Line Out", 3: "Speaker Out"}
+            case Param.GLOBAL_EQ_SELECT:
+                # Roland names the three stored global EQs by colour.
+                return {0: "Green", 1: "Red", 2: "Yellow"}
+            case Param.LINE_OUT_AIR_FEEL:
+                return {0: "Rec", 1: "Live", 2: "Blend"}
+            case Param.LINE_OUT_CUSTOM_SELECT:
+                return {0: "Custom 1", 1: "Custom 2"}
+            case Param.LINE_OUT_CUSTOM1_MIC_TYPE | Param.LINE_OUT_CUSTOM2_MIC_TYPE:
+                return {0: "DYN57", 1: "DYN421", 2: "CND451", 3: "CND87", 4: "RBN121"}
             case _:
                 return None
 
@@ -588,6 +798,11 @@ class Param(StrEnum):
         if self in EFFECT_KNOBS:
             return f"fx{EFFECT_KNOBS[self][0]}"
         match self:
+            case _ if self.value.startswith("color_"):            return "colors"
+            case _ if self.value.startswith(("global_", "line_out_")) or self is Param.STEREO_EXPAND:
+                return "global"
+            case _ if self.value.startswith(("solo_eq_", "solo_delay_")):  return "solo"
+            case _ if self.value.startswith("eq2_"):              return "eq2"
             case _ if self.value.startswith("eq_"):               return "eq"
             case _ if self.value.startswith("boost_"):            return "boost"
             case _ if self.value.startswith("delay2_"):           return "delay2"
@@ -649,9 +864,18 @@ class Param(StrEnum):
     def is_eq_band(self) -> bool:
         return self.value.startswith("eq_band_")
 
-    def delay1(self) -> "Param":
-        """For a delay2_ setting, its delay 1 twin, which shares its layout."""
-        return Param("delay_" + self.value.removeprefix("delay2_"))
+    def twin_and_shift(self) -> tuple["Param | None", int]:
+        """For a copy of another setting's layout (see TWINS): that setting,
+        and how far from it this one lives. (None, 0) for anything else."""
+        if self.value not in NOT_TWINS:
+            for prefix, twin_prefix, shift in TWINS:
+                if self.value.startswith(prefix):
+                    return Param(twin_prefix + self.value.removeprefix(prefix)), shift
+        return None, 0
+
+    def twin(self) -> "Param | None":
+        """The setting this one copies: delay2_feedback -> delay_feedback."""
+        return self.twin_and_shift()[0]
 
     @classmethod
     def eq_bands(cls) -> list["Param"]:
@@ -673,3 +897,26 @@ EFFECT_KNOBS = {
     for effect in EFFECTS
     for knob in effect.knobs
 }
+
+# Every colour-channel setting -> (address, where its choices come from):
+# a Param whose options and range it shares, or its own {value: name}.
+# The amp stores them as one run from 0x60000624: six blocks x three
+# colours, the three layer modes, then each block's selected colour.
+_COLOUR_TYPES = {
+    "boost": Param.BOOST_TYPE, "mod": Param.FX1_TYPE, "fx": Param.FX1_TYPE,
+    "delay": Param.DELAY_TYPE, "reverb": Param.REVERB_TYPE, "delay2": Param.DELAY_TYPE,
+}
+COLOUR_SETTINGS = {}
+for block_index, block in enumerate(COLOUR_BLOCKS):
+    for colour_index, colour in enumerate(COLOURS):
+        COLOUR_SETTINGS[Param(f"color_{block}_{colour}")] = (
+            COLOUR_BASE + block_index * 3 + colour_index, _COLOUR_TYPES[block],
+        )
+for colour_index, colour in enumerate(COLOURS):
+    COLOUR_SETTINGS[Param(f"color_layer_{colour}")] = (
+        COLOUR_BASE + 18 + colour_index, {0: "Delay", 1: "Delay + Reverb", 2: "Reverb"},
+    )
+for block_index, block in enumerate(COLOUR_BLOCKS[:5]):
+    COLOUR_SETTINGS[Param(f"color_select_{block}")] = (
+        COLOUR_BASE + 21 + block_index, {0: "Green", 1: "Red", 2: "Yellow"},
+    )

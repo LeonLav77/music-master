@@ -762,14 +762,14 @@
         <div class="sheet-inner">
           <h2 class="sheet-title" x-text="titles[openBlock]"></h2>
 
-          <!-- tabs, for a block with more than one engine (the two delays) -->
+          <!-- tabs, for a sheet with more than one page (two delays, two EQs, amp setup) -->
           <template x-if="editor && editor.tabs">
             <div class="segmented editor-tabs">
               <template x-for="tab in editor.tabs" :key="tab.id">
                 <button
                   type="button" class="seg"
-                  :class="tab.id === delayTab && 'active'"
-                  @click="delayTab = tab.id"
+                  :class="tab.id === sheetTab && 'active'"
+                  @click="sheetTab = tab.id"
                   x-text="tab.label"
                 ></button>
               </template>
@@ -867,6 +867,11 @@
                 @click="amp.toggle(param.key)"
                 x-text="param.label"
               ></button>
+            </template>
+
+            <!-- the amp's own panel buttons: a press, not a setting (TAP, VARIATION) -->
+            <template x-for="action in (editor && editor.actions ? editor.actions : [])" :key="action.button">
+              <button type="button" class="toggle-btn" @click="press(action.button)" x-text="action.label"></button>
             </template>
           </div>
 

@@ -31,8 +31,6 @@ export const MASTER_KEY = { key: "master_key", label: "Key" };
 
 export const AMP_PARAMS = [
   { key: "cabinet_resonance", label: "Cabinet" },
-  { key: "solo_switch", label: "Solo" },
-  { key: "solo_level", label: "Solo Lvl" },
   { key: "contour_switch", label: "Contour" },
   { key: "contour_select", label: "Active contour" },
   { key: "send_return_switch", label: "FX Loop" },
@@ -49,6 +47,7 @@ export const contourParams = (number) => [
 ];
 
 export const BOOST_PARAMS = [
+  { key: "color_select_boost", label: "Colour" },
   { key: "boost_type", label: "Pedal" },
   { key: "boost_drive", label: "Drive" },
   { key: "boost_bottom", label: "Bottom" },
@@ -61,6 +60,7 @@ export const BOOST_PARAMS = [
 
 export const REVERB_SPRING = 5;
 export const reverbParams = (type) => [
+  { key: "color_select_reverb", label: "Colour" },
   { key: "reverb_type", label: "Type" },
   { key: "reverb_time", label: "Time" },
   { key: "reverb_pre_delay", label: "Pre-Dly" },
@@ -106,26 +106,74 @@ export const GATE_PARAMS = [
   { key: "noise_suppressor_release", label: "Release" }
 ];
 
-// EQ: one block, two types. 0 = parametric, 1 = GE-10 (the ten bands, which
-// have their own pad on the main screen).
-export const eqParams = (type) => [
-  { key: "eq_type", label: "Type" },
-  { key: "eq_position", label: "Position" },
+// An EQ: one block, two types. 0 = parametric, 1 = GE-10. Three EQs share
+// this layout: "eq" (the main one), "eq2" and "global_eq" (amp-wide). The
+// main EQ's ten bands and switch live on the EQ pad, so its panel leaves
+// them out; the other two get them as knobs.
+const GE_BANDS = ["31hz", "62hz", "125hz", "250hz", "500hz", "1khz", "2khz", "4khz", "8khz", "16khz"];
+const GE_LABELS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
+export const eqParams = (type, prefix = "eq") => [
+  ...(prefix === "eq" ? [] : [{ key: `${prefix}_switch`, label: prefix === "global_eq" ? "Global EQ" : "On" }]),
+  { key: `${prefix}_type`, label: "Type" },
+  { key: `${prefix}_position`, label: "Position" },
   ...(type === 0 ? [
-    { key: "eq_low_cut", label: "Low Cut" },
-    { key: "eq_low_gain", label: "Low" },
-    { key: "eq_low_mid_freq", label: "Lo-Mid Freq" },
-    { key: "eq_low_mid_q", label: "Lo-Mid Q" },
-    { key: "eq_low_mid_gain", label: "Lo-Mid" },
-    { key: "eq_high_mid_freq", label: "Hi-Mid Freq" },
-    { key: "eq_high_mid_q", label: "Hi-Mid Q" },
-    { key: "eq_high_mid_gain", label: "Hi-Mid" },
-    { key: "eq_high_gain", label: "High" },
-    { key: "eq_high_cut", label: "High Cut" },
-    { key: "eq_peq_level", label: "Level" },
+    { key: `${prefix}_low_cut`, label: "Low Cut" },
+    { key: `${prefix}_low_gain`, label: "Low" },
+    { key: `${prefix}_low_mid_freq`, label: "Lo-Mid Freq" },
+    { key: `${prefix}_low_mid_q`, label: "Lo-Mid Q" },
+    { key: `${prefix}_low_mid_gain`, label: "Lo-Mid" },
+    { key: `${prefix}_high_mid_freq`, label: "Hi-Mid Freq" },
+    { key: `${prefix}_high_mid_q`, label: "Hi-Mid Q" },
+    { key: `${prefix}_high_mid_gain`, label: "Hi-Mid" },
+    { key: `${prefix}_high_gain`, label: "High" },
+    { key: `${prefix}_high_cut`, label: "High Cut" },
+    { key: `${prefix}_peq_level`, label: "Level" },
   ] : [
-    { key: "eq_level", label: "EQ Level" },
+    ...(prefix === "eq" ? [] : GE_BANDS.map((band, index) => ({ key: `${prefix}_band_${band}`, label: GE_LABELS[index] }))),
+    { key: `${prefix}_level`, label: "EQ Level" },
   ]),
+];
+
+// SOLO: the lead boost, plus the EQ and delay that come in with it.
+export const SOLO_PARAMS = [
+  { key: "solo_switch", label: "Solo" },
+  { key: "solo_level", label: "Solo Lvl" },
+  { key: "solo_eq_switch", label: "Solo EQ" },
+  { key: "solo_eq_low_cut", label: "Low Cut" },
+  { key: "solo_eq_low_gain", label: "Low" },
+  { key: "solo_eq_mid_freq", label: "Mid Freq" },
+  { key: "solo_eq_mid_q", label: "Mid Q" },
+  { key: "solo_eq_mid_gain", label: "Mid" },
+  { key: "solo_eq_high_gain", label: "High" },
+  { key: "solo_eq_high_cut", label: "High Cut" },
+  { key: "solo_eq_level", label: "EQ Level" },
+  { key: "solo_delay_switch", label: "Solo Delay" },
+  { key: "solo_delay_carryover", label: "Carry-over" },
+  { key: "solo_delay_filter", label: "Delay Filter" },
+  { key: "solo_delay_time", label: "Time" },
+  { key: "solo_delay_feedback", label: "Feedback" },
+  { key: "solo_delay_high_cut", label: "Dly High Cut" },
+  { key: "solo_delay_level", label: "Dly Level" },
+  { key: "solo_delay_direct_mix", label: "Direct" },
+  { key: "solo_delay_mod_switch", label: "Delay Mod" },
+  { key: "solo_delay_mod_rate", label: "Mod Rate" },
+  { key: "solo_delay_mod_depth", label: "Mod Depth" },
+];
+
+// Amp-wide settings: the global EQ and the line out. Not part of any channel.
+const LINE_OUT_PARAMS = (custom) => [
+  { key: "line_out_air_feel", label: "Line Out Air Feel" },
+  { key: "stereo_expand", label: "Stereo Expand" },
+  { key: "line_out_custom_switch", label: "Line Out Custom" },
+  { key: "line_out_custom_select", label: "Custom" },
+  { key: `line_out_custom${custom}_mic_type`, label: "Mic" },
+  { key: `line_out_custom${custom}_mic_distance`, label: "Mic Distance" },
+  { key: `line_out_custom${custom}_mic_position`, label: "Mic Position" },
+];
+export const globalParams = (eqType, custom) => [
+  { key: "global_eq_select", label: "Global EQ memory" },
+  ...eqParams(eqType, "global_eq"),
+  ...LINE_OUT_PARAMS(custom),
 ];
 
 // Delay types with settings of their own (values of delay_type).

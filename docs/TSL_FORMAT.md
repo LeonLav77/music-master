@@ -73,7 +73,7 @@ Every block is a run of bytes copied straight out of the amp's memory.
 
 **Note on `Eq(2)`:** it has the same layout as bytes 48–71 of `Patch_0`,
 but it is a separate, second EQ with its own switch, not a copy. Its
-position in the chain is byte 89 of `Patch_1`. Not mapped in `Param` yet.
+position in the chain is byte 89 of `Patch_1`. In `Param` as `eq2_*`.
 
 ---
 
@@ -455,23 +455,83 @@ Harmonist key, solo and contour. Base `0x60000540`; bytes 64 and up sit at
 | 85 | `solo_level` | 0–100 |  |
 | 86 | `contour_switch` | 0–1 |  |
 | 87 | `contour_select` | 0–2 |  |
+| 89 | `eq2_position` | 0–1 |  |
 
 **Reverb types**: `1` Room · `3` Hall · `4` Plate · `5` Spring · `6` Modulate. The amp accepts 0 and
 2 as well, but Tone Studio never offers them.
 **Pedal modes**: `0` Wah · `1` Pedal Bend · `2` Wah 95E
 **Wah voicings**: `0` Cry Wah · `1` Vo Wah · `2` Fat Wah · `3` Light Wah · `4` 7 String Wah · `5` Reso Wah
 
+## `UserPatch%Eq(2)` — 24 bytes
+
+Base `0x60000060`. The second EQ: the same layout as bytes 48–71 of
+`Patch_0`, with its own switch.
+
+| Byte | Parameter | Stored | Notes |
+|---|---|---|---|
+| 0 | `eq2_switch` | 0–1 |  |
+| 1 | `eq2_type` | 0–1 |  |
+| 2 | `eq2_low_cut` | 0–17 |  |
+| 3 | `eq2_low_gain` | 0–40 | stored +20 |
+| 4 | `eq2_low_mid_freq` | 0–27 |  |
+| 5 | `eq2_low_mid_q` | 0–5 |  |
+| 6 | `eq2_low_mid_gain` | 0–40 | stored +20 |
+| 7 | `eq2_high_mid_freq` | 0–27 |  |
+| 8 | `eq2_high_mid_q` | 0–5 |  |
+| 9 | `eq2_high_mid_gain` | 0–40 | stored +20 |
+| 10 | `eq2_high_gain` | 0–40 | stored +20 |
+| 11 | `eq2_high_cut` | 0–14 |  |
+| 12 | `eq2_peq_level` | 0–40 | stored +20 |
+| 13 | `eq2_band_31hz` | 0–48 | stored +24 |
+| 14 | `eq2_band_62hz` | 0–48 | stored +24 |
+| 15 | `eq2_band_125hz` | 0–48 | stored +24 |
+| 16 | `eq2_band_250hz` | 0–48 | stored +24 |
+| 17 | `eq2_band_500hz` | 0–48 | stored +24 |
+| 18 | `eq2_band_1khz` | 0–48 | stored +24 |
+| 19 | `eq2_band_2khz` | 0–48 | stored +24 |
+| 20 | `eq2_band_4khz` | 0–48 | stored +24 |
+| 21 | `eq2_band_8khz` | 0–48 | stored +24 |
+| 22 | `eq2_band_16khz` | 0–48 | stored +24 |
+| 23 | `eq2_level` | 0–48 | stored +24 |
+
 ## `UserPatch%Patch_2` — 36 bytes
 
-Base `0x60000620`. Byte 0 is the chain pattern (0–6, unlabelled in Tone
-Studio) and bytes 4–29 are which effect each colour (green/red/yellow) of
-each block holds; neither is in `Param` yet.
+Base `0x60000620`. Byte 0 is the chain pattern (0–6; Tone Studio labels it
+only with pictures, so it is not in `Param`). Bytes 4–29 are the colour
+channels: which effect each colour (green/red/yellow) of each block holds,
+the delay/reverb layer mode per colour, and each block's selected colour.
 
 | Byte | Parameter | Stored | Notes |
 |---|---|---|---|
 | 1 | `send_return_position` | 0–1 |  |
 | 2 | `eq_position` | 0–1 |  |
 | 3 | `pedal_position` | 0–1 |  |
+| 4 | `color_boost_green` | 0–25 |  |
+| 5 | `color_boost_red` | 0–25 |  |
+| 6 | `color_boost_yellow` | 0–25 |  |
+| 7 | `color_mod_green` | 0–40 |  |
+| 8 | `color_mod_red` | 0–40 |  |
+| 9 | `color_mod_yellow` | 0–40 |  |
+| 10 | `color_fx_green` | 0–40 |  |
+| 11 | `color_fx_red` | 0–40 |  |
+| 12 | `color_fx_yellow` | 0–40 |  |
+| 13 | `color_delay_green` | 0–10 |  |
+| 14 | `color_delay_red` | 0–10 |  |
+| 15 | `color_delay_yellow` | 0–10 |  |
+| 16 | `color_reverb_green` | 0–6 |  |
+| 17 | `color_reverb_red` | 0–6 |  |
+| 18 | `color_reverb_yellow` | 0–6 |  |
+| 19 | `color_delay2_green` | 0–10 |  |
+| 20 | `color_delay2_red` | 0–10 |  |
+| 21 | `color_delay2_yellow` | 0–10 |  |
+| 22 | `color_layer_green` | 0–2 |  |
+| 23 | `color_layer_red` | 0–2 |  |
+| 24 | `color_layer_yellow` | 0–2 |  |
+| 25 | `color_select_boost` | 0–2 |  |
+| 26 | `color_select_mod` | 0–2 |  |
+| 27 | `color_select_fx` | 0–2 |  |
+| 28 | `color_select_delay` | 0–2 |  |
+| 29 | `color_select_reverb` | 0–2 |  |
 | 35 | `cabinet_resonance` | 0–2 |  |
 
 ## `UserPatch%Status` — 18 bytes
@@ -491,6 +551,35 @@ Base `0x60000650`. Bytes 1–11 are the panel knob positions.
 **LED colours**: `0` off · `1` green · `2` red · `3` yellow
 
 These report which colour channel each section is on. Read-only on the amp.
+
+## `UserPatch%Patch_Mk2V2` — 22 bytes
+
+Base `0x60000F10`. Solo EQ and solo delay (MkII firmware 2.x). Byte 0 is
+the solo EQ's position, not in `Param`: Tone Studio shows its two values
+only as icons.
+
+| Byte | Parameter | Stored | Notes |
+|---|---|---|---|
+| 1 | `solo_eq_switch` | 0–1 |  |
+| 2 | `solo_eq_low_cut` | 0–17 |  |
+| 3 | `solo_eq_low_gain` | 0–48 | stored +24 |
+| 4 | `solo_eq_mid_freq` | 0–27 |  |
+| 5 | `solo_eq_mid_q` | 0–5 |  |
+| 6 | `solo_eq_mid_gain` | 0–48 | stored +24 |
+| 7 | `solo_eq_high_gain` | 0–48 | stored +24 |
+| 8 | `solo_eq_high_cut` | 0–14 |  |
+| 9 | `solo_eq_level` | 0–48 | stored +24 |
+| 10 | `solo_delay_switch` | 0–1 |  |
+| 11 | `solo_delay_carryover` | 0–1 |  |
+| 12 | `solo_delay_time` | 1–2000 | 2 bytes |
+| 14 | `solo_delay_feedback` | 0–100 |  |
+| 15 | `solo_delay_level` | 0–120 |  |
+| 16 | `solo_delay_direct_mix` | 0–100 |  |
+| 17 | `solo_delay_filter` | 0–2 |  |
+| 18 | `solo_delay_high_cut` | 0–14 |  |
+| 19 | `solo_delay_mod_switch` | 0–1 |  |
+| 20 | `solo_delay_mod_rate` | 0–100 |  |
+| 21 | `solo_delay_mod_depth` | 0–100 |  |
 
 ## `UserPatch%Contour(1)`–`(3)` — 2 bytes each
 

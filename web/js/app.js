@@ -12,9 +12,12 @@ import { knob, ampDial, treadle, eqPad, channelRail } from "./components.js";
 import { transport } from "./transport.js";
 import { CHANNELS, FOOTSWITCHES, labelFor, FX_TYPE_OPTIONS } from "./schema.js";
 import {
-  BLOCK_TITLES, AMP_PARAMS, BOOST_PARAMS, GATE_PARAMS, HARMONIST_TYPE, MASTER_KEY,
-  contourParams, delayParams, effectParams, eqParams, reverbParams, wahParams, panel,
+  BLOCK_TITLES, AMP_PARAMS, BOOST_PARAMS, GATE_PARAMS, HARMONIST_TYPE, MASTER_KEY, SOLO_PARAMS,
+  contourParams, delayParams, effectParams, eqParams, globalParams, reverbParams, wahParams, panel,
 } from "./blocks.js";
+
+/** Tab buttons for an editor sheet: [{ id, label }], ids from 1. */
+const tabsFrom = (labels) => labels.map((label, index) => ({ id: index + 1, label }));
 
 // The Pi's own touch screen opens the page as /?kiosk (deploy/kiosk-browser).
 // There a long press must not open a menu - see .kiosk in app.css too.
@@ -68,7 +71,11 @@ document.addEventListener("alpine:init", () => {
       try { return localStorage.getItem("katana.tab") === "practice" ? "practice" : "amp"; } catch { return "amp"; }
     })(),
     openBlock: null,
-    delayTab: 1,          // which delay engine the delay editor shows
+    sheetTab: 1,          // which tab of the open editor sheet is showing
+    init() {
+      // Every sheet opens on its first tab.
+      this.$watch("openBlock", () => { this.sheetTab = 1; });
+    },
     channels: CHANNELS,
     footswitches: FOOTSWITCHES,
     ampKnobs: [
@@ -94,6 +101,8 @@ document.addEventListener("alpine:init", () => {
     tileColor(label) { return TILE_COLOR[label] ?? "coral"; },
 
     resync() { this.amp.resync(); },
+    /** Push one of the amp's panel buttons (TAP, VARIATION, ...). */
+    press(button) { transport.press(button); },
     pressFootswitch(fs) {
       // One command, not two: toggling the parameter already switches the
       // block on the amp. Sending the CC as well would fight it, and CC 127
@@ -108,8 +117,22 @@ document.addEventListener("alpine:init", () => {
       if (!id) return null;
       const amp = this.amp;
       switch (id) {
-        case "amp":
-          return panel([...AMP_PARAMS, ...contourParams(amp.num("contour_select") + 1)]);
+        case "amp": {
+          let built;
+          if (this.sheetTab === 2) {
+            built = panel(SOLO_PARAMS);
+          } else if (this.sheetTab === 3) {
+            built = panel(
+              globalParams(amp.num("global_eq_type"), amp.num("line_out_custom_select") + 1),
+              "Amp-wide: these apply to every channel, and switching channels does not change them.",
+            );
+          } else {
+            built = panel([...AMP_PARAMS, ...contourParams(amp.num("contour_select") + 1)]);
+            built.actions = [{ label: `Variation · ${amp.bool("variation") ? "on" : "off"}`, button: "variation" }];
+          }
+          built.tabs = tabsFrom(["Amp", "Solo", "Global"]);
+          return built;
+        }
         case "boost":
           return panel(BOOST_PARAMS);
         case "mod":
@@ -119,23 +142,25 @@ document.addEventListener("alpine:init", () => {
           const slot = id === "mod" ? 1 : 2;
           const typeKey = `fx${slot}_type`;
           const type = amp.num(typeKey);
-          const params = effectParams(slot, type);
+          const params = [{ key: `color_select_${id}`, label: "Colour" }, ...effectParams(slot, type)];
           if (type === HARMONIST_TYPE) params.push(MASTER_KEY);
           return {
             fxSlot: { typeKey, options: FX_TYPE_OPTIONS, current: type, name: labelFor(typeKey, type) },
-            ...panel(params, params.length ? null : `Type ${type} is accepted by the amp, but no effect uses it.`),
+            ...panel(params, params.length > 1 ? null : `Type ${type} is accepted by the amp, but no effect uses it.`),
           };
         }
         case "delay": {
           // Two independent engines, one tab each, so only one set of
           // controls is on screen at a time.
-          const prefix = this.delayTab === 2 ? "delay2" : "delay";
-          const built = panel(delayParams(prefix, amp.num(`${prefix}_type`)));
+          const prefix = this.sheetTab === 2 ? "delay2" : "delay";
+          // The DELAY panel button's colour covers both engines.
+          const built = panel([{ key: "color_select_delay", label: "Colour" }, ...delayParams(prefix, amp.num(`${prefix}_type`))]);
           built.toggles.unshift({ key: `${prefix}_switch`, label: "On", kind: "toggle" });
-          built.tabs = [1, 2].map((engine) => {
+          built.actions = [{ label: "Tap", button: `${prefix}_tap` }];
+          built.tabs = tabsFrom([1, 2].map((engine) => {
             const on = amp.bool(engine === 1 ? "delay_switch" : "delay2_switch");
-            return { id: engine, label: `Delay ${engine} · ${on ? "on" : "off"}` };
-          });
+            return `Delay ${engine} · ${on ? "on" : "off"}`;
+          }));
           return built;
         }
         case "reverb":
@@ -144,8 +169,12 @@ document.addEventListener("alpine:init", () => {
           return panel(GATE_PARAMS);
         case "wah":
           return panel(wahParams(amp.num("pedal_type")));
-        case "eq":
-          return panel(eqParams(amp.num("eq_type")));
+        case "eq": {
+          const prefix = this.sheetTab === 2 ? "eq2" : "eq";
+          const built = panel(eqParams(amp.num(`${prefix}_type`), prefix));
+          built.tabs = tabsFrom(["EQ 1", `EQ 2 · ${amp.bool("eq2_switch") ? "on" : "off"}`]);
+          return built;
+        }
         default:
           return null;
       }
