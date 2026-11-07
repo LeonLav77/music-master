@@ -1,6 +1,6 @@
 """Switching the amp on or off while the server runs.
 
-The tuner and recorder need the Katana's USB input, which only exists
+The tuner, recorder and monitor need the Katana's USB input, which only exists
 while the amp is on - and at boot the server is often up before it.
 
 Trying again is not enough: PortAudio, which sounddevice is built on,
@@ -27,7 +27,7 @@ from pathlib import Path
 import sounddevice
 
 from capture.stream import KATANA_NAME
-from server import audio, recorder, tuner
+from server import audio, monitor, recorder, tuner
 
 CARDS = Path("/proc/asound/cards")
 CHECK_INTERVAL = 2.0     # seconds between looks at the list of cards
@@ -52,6 +52,7 @@ def _restart_portaudio():
 
 async def _reopen():
     # Users first, so nothing is left holding a stream that is closed.
+    await monitor.close_monitor()
     await recorder.close_recorder()
     await tuner.close_input()
     metronome = await audio.close_player()
@@ -61,6 +62,7 @@ async def _reopen():
     await audio.open_player(metronome)
     await tuner.open_input()
     recorder.open_recorder()
+    monitor.open_monitor()
 
 
 async def _watch():
