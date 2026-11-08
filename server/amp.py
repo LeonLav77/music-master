@@ -2,12 +2,14 @@ import asyncio
 import contextlib
 
 from katana_amp import katana
-from katana_amp.katana import LIVE_BASE, PATCH_BLOCKS, Katana, KatanaError, advance
+from katana_amp.katana import LIVE_BASE, NAME_LENGTH, PATCH_BLOCKS, Katana, KatanaError, advance, decode_name
 from katana_amp.param import Param
 from server import browsers
 
 lock = asyncio.Lock()
 cache = {}
+# {patch number 1-9: name}, from the last time the names were read.
+patch_names = {}
 _online = False
 _channel = None
 _reconnect = asyncio.Event()
@@ -51,6 +53,26 @@ async def _set_online(online):
         return
     _online = online
     await browsers.broadcast({"type": "amp", "connected": online})
+
+
+def read_patch_names(connection):
+    """Read the nine stored names, and remember them for channel switches."""
+    names = connection.read_patch_names()
+    patch_names.clear()
+    patch_names.update(names)
+    return names
+
+
+def live_name(connection):
+    """The live patch's name, or None if the amp did not answer this time.
+
+    Catches its own error: a missed reply while polling is normal, and
+    letting it reach call() would count as the amp having gone away.
+    """
+    try:
+        return decode_name(connection.read(connection._encode_address(LIVE_BASE), NAME_LENGTH, attempts=1))
+    except KatanaError:
+        return None
 
 
 def probe(connection):
@@ -139,7 +161,7 @@ async def _reconnect_loop():
                 await call(probe, read=True)
                 values = await call(refresh, read=True)
                 with contextlib.suppress(KatanaError):
-                    names = await call(Katana.read_patch_names, read=True)
+                    names = await call(read_patch_names, read=True)
         except Exception:
             await asyncio.sleep(RECONNECT_INTERVAL)
             continue

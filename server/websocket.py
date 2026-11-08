@@ -8,6 +8,8 @@ amp link in amp.py.
 import asyncio
 import contextlib
 import json
+import logging
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -18,11 +20,37 @@ from playback import PlaybackError, TrackError
 from server import amp, audio, browsers, recorder, tuner, wifi
 
 router = APIRouter()
+log = logging.getLogger("uvicorn.error")  # uvicorn's logger, so it lands in the journal
 
 # Which delay time each TAP sets, and how long after the last tap to read
 # it back - the amp only knows the tempo once you stop tapping.
 TAPS = {"delay_tap": Param.DELAY_TIME, "delay2_tap": Param.DELAY2_TIME}
+# After a channel switch the amp needs a moment to copy that channel into
+# its live memory; reading sooner gives the old channel's values. Rather
+# than guess how long, poll the live patch name until it is the new
+# channel's, then read. CHANNEL_SETTLE is the fallback when the name cannot
+# tell (PANEL, duplicate names, names not read yet) - 0.5 s is what BOSS
+# Tone Studio's own code waited.
 CHANNEL_SETTLE = 0.5
+CHANNEL_POLL = 0.05      # seconds between name checks
+CHANNEL_MARGIN = 0.1     # after the name matches, in case the name lands first
+CHANNEL_TIMEOUT = 2.0    # give up waiting for the name and read anyway
+
+
+async def _wait_until_loaded(program):
+    """Wait until the amp has loaded channel `program`. Returns how it knew."""
+    target = amp.patch_names.get(program)
+    names = list(amp.patch_names.values())
+    if program == CHANNELS["panel"] or not target or names.count(target) != 1:
+        await asyncio.sleep(CHANNEL_SETTLE)
+        return "fixed wait"
+    deadline = time.monotonic() + CHANNEL_TIMEOUT
+    while time.monotonic() < deadline:
+        if await amp.call(amp.live_name) == target:
+            await asyncio.sleep(CHANNEL_MARGIN)
+            return "name matched"
+        await asyncio.sleep(CHANNEL_POLL)
+    return "timed out"
 TAP_SETTLE = 1.5
 _tap_readback = None
 
@@ -104,14 +132,19 @@ async def _select_channel(name):
         if current == name:
             detour = "a2" if name != "a2" else "a1"
             await amp.call(Katana.select_channel, detour)
-            await asyncio.sleep(0.5)
+            await _wait_until_loaded(CHANNELS[detour])
 
+        started = time.monotonic()
         await amp.call(Katana.select_channel, name)
-        # The amp needs a moment to load the channel before it reads back.
-        # 0.5 s is what BOSS Tone Studio's own code waited.
-        await asyncio.sleep(CHANNEL_SETTLE)
+        how = await _wait_until_loaded(CHANNELS[name])
+        loaded = time.monotonic()
         # Amp-wide settings do not change with the channel; skip them.
         values = await amp.call(amp.refresh, False, read=True)
+        done = time.monotonic()
+    log.info(
+        "channel %s: loaded after %.2f s (%s), read back in %.2f s, %.2f s total",
+        name, loaded - started, how, done - loaded, done - started,
+    )
 
     # Everyone needs this, including whoever asked - it is a whole new state.
     await browsers.broadcast({"type": "channel", "channel": name, "values": values})

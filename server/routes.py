@@ -70,7 +70,7 @@ async def channels():
     """The selectable channels, and the names of the stored patches."""
     async with amp.lock:
         try:
-            names = await amp.call(Katana.read_patch_names, read=True)
+            names = await amp.call(amp.read_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     return {"channels": CHANNELS, "patches": names}
@@ -84,7 +84,7 @@ async def save_patch(number: int):
     async with amp.lock:
         try:
             written = await amp.call(Katana.copy_live_to_patch, number)
-            names = await amp.call(Katana.read_patch_names, read=True)
+            names = await amp.call(amp.read_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     await browsers.broadcast({"type": "patches", "names": names})
