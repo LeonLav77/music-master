@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 
 from katana_amp import katana
-from katana_amp.katana import Katana, KatanaError
+from katana_amp.katana import LIVE_BASE, PATCH_BLOCKS, Katana, KatanaError, advance
 from katana_amp.param import Param
 from server import browsers
 
@@ -60,56 +60,73 @@ def probe(connection):
 MAX_READ = 128  # bytes per request; Tone Studio's own limit (SYSEX_MAXLEN)
 
 
-def refresh(connection):
+def _plan_reads():
+    """The requests a refresh makes: (address, length, is_system) each.
 
-    # Group the single-byte settings into runs of consecutive addresses,
-    # each short enough to ask for in one request.
-    singles = sorted(
-        (param for param in Param if param.size() == 1),
-        key=lambda param: param.address(),
-    )
-    runs = []
-    for param in singles:
-        if (
-            runs
-            and param.address() == runs[-1][0] + len(runs[-1][1])
-            and len(runs[-1][1]) < MAX_READ
-        ):
-            runs[-1][1].append(param)
+    Patch settings are read the way BOSS Tone Studio reads them: whole
+    blocks from Roland's list, up to 128 bytes at a time - about 15
+    requests, two-byte values included, instead of one per run of
+    settings. Amp-wide (system area) settings are read as runs of
+    consecutive addresses; there are only a few.
+    """
+    reads = []
+    for offset, length in PATCH_BLOCKS.values():
+        start = LIVE_BASE + offset
+        end = advance(start, length)
+        if not any(start <= param.address() < end for param in Param):
+            continue
+        for chunk in range(0, length, MAX_READ):
+            reads.append((advance(start, chunk), min(MAX_READ, length - chunk), False))
+
+    system = sorted((param for param in Param if param.address() < LIVE_BASE), key=lambda param: param.address())
+    for param in system:
+        last = reads[-1] if reads and reads[-1][2] else None
+        if last and param.address() == advance(last[0], last[1]):
+            reads[-1] = (last[0], last[1] + param.size(), True)
         else:
-            runs.append((param.address(), [param]))
+            reads.append((param.address(), param.size(), True))
+    return reads
 
-    found = {}
-    for start, params in runs:
+
+READS = _plan_reads()
+
+
+def refresh(connection, include_system=True):
+    """Re-read the amp into the cache and return all the values it holds.
+
+    A channel switch passes include_system=False: amp-wide settings do not
+    change with the channel, so their cached values are kept.
+    """
+    image = {}
+    for start, length, is_system in READS:
+        if is_system and not include_system:
+            continue
         try:
-            # One attempt: a block the amp will not answer for is a normal
-            # outcome here (effect blocks stay silent unless loaded), and
-            # retrying every one of them dominates the refresh.
-            data = connection.read(connection._encode_address(start), len(params), attempts=1)
+            # One attempt: retrying every block that does not answer would
+            # dominate the refresh. A missing block stays "unknown".
+            data = connection.read(connection._encode_address(start), length, attempts=1)
         except KatanaError:
             continue
-        for offset, param in enumerate(params):
-            if offset < len(data):
-                found[param.value] = param.decode([data[offset]])
+        for index, byte in enumerate(data):
+            image[advance(start, index)] = byte
 
-    # The two-byte ones (delay times), each on its own.
+    found = {}
     for param in Param:
-        if param.size() == 2:
-            try:
-                found[param.value] = connection.get_parameter(param)
-            except KatanaError:
-                continue
+        data = [image.get(advance(param.address(), index)) for index in range(param.size())]
+        if None not in data:
+            found[param.value] = param.decode(data)
 
     if not found:
         raise KatanaError("The amp stopped answering")
 
-    cache.clear()
+    if include_system:
+        cache.clear()
     cache.update(found)
 
     global _channel
     with contextlib.suppress(KatanaError):
         _channel = connection.read_channel()
-    return found
+    return dict(cache)
 
 
 async def _reconnect_loop():

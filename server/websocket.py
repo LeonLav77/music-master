@@ -22,6 +22,7 @@ router = APIRouter()
 # Which delay time each TAP sets, and how long after the last tap to read
 # it back - the amp only knows the tempo once you stop tapping.
 TAPS = {"delay_tap": Param.DELAY_TIME, "delay2_tap": Param.DELAY2_TIME}
+CHANNEL_SETTLE = 0.5
 TAP_SETTLE = 1.5
 _tap_readback = None
 
@@ -30,7 +31,7 @@ async def _refresh_everyone():
     """Re-read the whole amp and send it to every browser. For changes that
     move many settings at once (a colour switch loads another effect)."""
     await asyncio.sleep(0.3)
-    values = await amp.call(amp.refresh, read=True)
+    values = await amp.call(amp.refresh, False, read=True)
     await browsers.broadcast(amp.state_message())
     return values
 
@@ -106,8 +107,11 @@ async def _select_channel(name):
             await asyncio.sleep(0.5)
 
         await amp.call(Katana.select_channel, name)
-        await asyncio.sleep(1.2)
-        values = await amp.call(amp.refresh, read=True)
+        # The amp needs a moment to load the channel before it reads back.
+        # 0.5 s is what BOSS Tone Studio's own code waited.
+        await asyncio.sleep(CHANNEL_SETTLE)
+        # Amp-wide settings do not change with the channel; skip them.
+        values = await amp.call(amp.refresh, False, read=True)
 
     # Everyone needs this, including whoever asked - it is a whole new state.
     await browsers.broadcast({"type": "channel", "channel": name, "values": values})
