@@ -201,10 +201,10 @@ export function createKatanaStore() {
     },
 
     async saveToChannel(id) {
-      const pc = CHANNELS.find((channel) => channel.id === id)?.pc;
-      if (pc === undefined) return;
+      // PANEL is the live knobs, not a stored sound - the amp has no slot for it.
+      if (id === "panel" || !CHANNELS.some((channel) => channel.id === id)) return;
       const result = await this.runBusy(`saving to ${id.toUpperCase()}`, () =>
-        transport.saveToPatch(pc),
+        transport.saveToPatch(id),
       );
       if (!result) return;
       this._mergeNames(result.names);
@@ -227,8 +227,9 @@ export function createKatanaStore() {
     },
 
     _mergeNames(names) {
+      // The server keys names by channel ("a1"), not by number.
       CHANNELS.forEach((channel) => {
-        const name = names[String(channel.pc)];
+        const name = names[channel.id];
         if (name) this.channelNames[channel.id] = name;
       });
     },

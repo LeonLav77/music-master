@@ -135,8 +135,8 @@ export const transport = {
   },
 
   /** Copy the live sound into a stored channel. Overwrites it permanently. */
-  async saveToPatch(number) {
-    return request(`/api/patch/${number}`, { method: "POST" });
+  async saveToPatch(channel) {
+    return request(`/api/patch/${channel}`, { method: "POST" });
   },
 
   /** Full state re-read. The amp never reports physical knob turns. */

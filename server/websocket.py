@@ -27,28 +27,29 @@ log = logging.getLogger("uvicorn.error")  # uvicorn's logger, so it lands in the
 TAPS = {"delay_tap": Param.DELAY_TIME, "delay2_tap": Param.DELAY2_TIME}
 # After a channel switch the amp needs a moment to copy that channel into
 # its live memory; reading sooner gives the old channel's values. Rather
-# than guess how long, poll the live patch name until it is the new
-# channel's, then read. CHANNEL_SETTLE is the fallback when the name cannot
-# tell (PANEL, duplicate names, names not read yet) - 0.5 s is what BOSS
-# Tone Studio's own code waited.
+# than guess how long, poll the start of the live patch (name, boost, amp)
+# until it matches the stored copy of the new channel, then read.
+# CHANNEL_SETTLE is the fallback when that cannot tell: PANEL (the live
+# knobs, no stored copy), two identical channels, or nothing read yet -
+# 0.5 s is what BOSS Tone Studio's own code waited.
 CHANNEL_SETTLE = 0.5
 CHANNEL_POLL = 0.05      # seconds between name checks
 CHANNEL_MARGIN = 0.1     # after the name matches, in case the name lands first
 CHANNEL_TIMEOUT = 2.0    # give up waiting for the name and read anyway
 
 
-async def _wait_until_loaded(program):
-    """Wait until the amp has loaded channel `program`. Returns how it knew."""
-    target = amp.patch_names.get(program)
-    names = list(amp.patch_names.values())
-    if program == CHANNELS["panel"] or not target or names.count(target) != 1:
+async def _wait_until_loaded(channel):
+    """Wait until the amp has loaded `channel` ("b2"). Returns how it knew."""
+    target = amp.patch_fingerprints.get(channel)
+    stored = list(amp.patch_fingerprints.values())
+    if channel == "panel" or not target or stored.count(target) != 1:
         await asyncio.sleep(CHANNEL_SETTLE)
         return "fixed wait"
     deadline = time.monotonic() + CHANNEL_TIMEOUT
     while time.monotonic() < deadline:
-        if await amp.call(amp.live_name) == target:
+        if await amp.call(amp.live_fingerprint) == target:
             await asyncio.sleep(CHANNEL_MARGIN)
-            return "name matched"
+            return "matched"
         await asyncio.sleep(CHANNEL_POLL)
     return "timed out"
 TAP_SETTLE = 1.5
@@ -132,11 +133,11 @@ async def _select_channel(name):
         if current == name:
             detour = "a2" if name != "a2" else "a1"
             await amp.call(Katana.select_channel, detour)
-            await _wait_until_loaded(CHANNELS[detour])
+            await _wait_until_loaded(detour)
 
         started = time.monotonic()
         await amp.call(Katana.select_channel, name)
-        how = await _wait_until_loaded(CHANNELS[name])
+        how = await _wait_until_loaded(name)
         loaded = time.monotonic()
         # Amp-wide settings do not change with the channel; skip them.
         values = await amp.call(amp.refresh, False, read=True)

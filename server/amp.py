@@ -2,14 +2,24 @@ import asyncio
 import contextlib
 
 from katana_amp import katana
-from katana_amp.katana import LIVE_BASE, NAME_LENGTH, PATCH_BLOCKS, Katana, KatanaError, advance, decode_name
+from katana_amp.katana import (
+    LIVE_BASE, NAME_LENGTH, PATCH_BLOCKS, STORED_PATCH, Katana, KatanaError, advance, decode_name,
+)
 from katana_amp.param import Param
 from server import browsers
 
 lock = asyncio.Lock()
 cache = {}
-# {patch number 1-9: name}, from the last time the names were read.
+# {channel: name} and {channel: fingerprint}, from the last time the stored
+# channels were read. A fingerprint is the first FINGERPRINT_LENGTH bytes of
+# the stored patch - its name, boost and amp settings - so two channels
+# with the same name still look different.
 patch_names = {}
+patch_fingerprints = {}
+FINGERPRINT_LENGTH = 0x2A
+# 0x23 is knob_volume: it follows the physical volume knob, so the live
+# copy never matches what was stored. Left out of every comparison.
+FINGERPRINT_SKIP = 0x23
 _online = False
 _channel = None
 _reconnect = asyncio.Event()
@@ -55,22 +65,34 @@ async def _set_online(online):
     await browsers.broadcast({"type": "amp", "connected": online})
 
 
+def _fingerprint(data):
+    """The bytes two copies of a patch must share, knob_volume blanked out."""
+    return tuple(None if index == FINGERPRINT_SKIP else byte for index, byte in enumerate(data))
+
+
 def read_patch_names(connection):
-    """Read the nine stored names, and remember them for channel switches."""
-    names = connection.read_patch_names()
+    """Read the nine stored channels' names (and fingerprints, for channel
+    switches) and return {channel: name}. One read per channel either way."""
+    names, fingerprints = {}, {}
+    for channel, patch in STORED_PATCH.items():
+        data = connection.read_patch(patch, 0x00, FINGERPRINT_LENGTH)
+        names[channel] = decode_name(data[:NAME_LENGTH])
+        fingerprints[channel] = _fingerprint(data)
     patch_names.clear()
     patch_names.update(names)
+    patch_fingerprints.clear()
+    patch_fingerprints.update(fingerprints)
     return names
 
 
-def live_name(connection):
-    """The live patch's name, or None if the amp did not answer this time.
+def live_fingerprint(connection):
+    """The live patch's fingerprint, or None if the amp did not answer.
 
     Catches its own error: a missed reply while polling is normal, and
     letting it reach call() would count as the amp having gone away.
     """
     try:
-        return decode_name(connection.read(connection._encode_address(LIVE_BASE), NAME_LENGTH, attempts=1))
+        return _fingerprint(connection.read(connection._encode_address(LIVE_BASE), FINGERPRINT_LENGTH, attempts=1))
     except KatanaError:
         return None
 

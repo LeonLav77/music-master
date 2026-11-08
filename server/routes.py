@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from capture import RecorderError
 from katana_amp import katana
 from katana_amp import tsl
-from katana_amp.katana import CHANNELS, Katana, KatanaError
+from katana_amp.katana import CHANNELS, STORED_PATCH, Katana, KatanaError
 from katana_amp.param import Param
 from playback import TrackError
 from playback.library import check_name
@@ -76,19 +76,22 @@ async def channels():
     return {"channels": CHANNELS, "patches": names}
 
 
-@router.post("/api/patch/{number}")
-async def save_patch(number: int):
-    """Copy the live sound into stored channel 1-9. Overwrites it permanently."""
-    if not 1 <= number <= 9:
-        raise HTTPException(422, "Patch number must be 1-9")
+@router.post("/api/patch/{channel}")
+async def save_patch(channel: str):
+    """Copy the live sound into a stored channel ("a1".."b4"). Overwrites
+    it permanently. PANEL is the live knob positions, not a stored sound,
+    so it cannot be saved to - BOSS Tone Studio refuses it too."""
+    channel = channel.lower()
+    if channel not in STORED_PATCH or channel == "panel":
+        raise HTTPException(422, "Save to a1-a4 or b1-b4")
     async with amp.lock:
         try:
-            written = await amp.call(Katana.copy_live_to_patch, number)
+            written = await amp.call(Katana.copy_live_to_patch, STORED_PATCH[channel])
             names = await amp.call(amp.read_patch_names, read=True)
         except KatanaError as exc:
             raise HTTPException(503, str(exc))
     await browsers.broadcast({"type": "patches", "names": names})
-    return {"patch": number, "bytes": written, "names": names}
+    return {"channel": channel, "bytes": written, "names": names}
 
 
 # --- Backing tracks and metronome ------------------------------------------

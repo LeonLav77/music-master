@@ -161,6 +161,16 @@ CHANNELS = {
     "b1": 6, "b2": 7, "b3": 8, "b4": 9,
 }
 
+# Where each channel is stored: patch 1-9 at 0x10000000 + (n - 1) * 0x10000.
+# NOT the same numbering as above: in memory PANEL comes first (Roland's
+# order, as in BOSS Tone Studio's patch list), so A1-A4 are patches 2-5.
+# Only the B bank happens to match its Program Change numbers.
+STORED_PATCH = {
+    "panel": 1, "a1": 2, "a2": 3, "a3": 4, "a4": 5,
+    "b1": 6, "b2": 7, "b3": 8, "b4": 9,
+}
+
+# The channel the amp is on, 0-8 in the same order as STORED_PATCH.
 CURRENT_CHANNEL = 0x00010000
 
 def decode_name(raw):
@@ -324,20 +334,20 @@ class Katana:
         return program
 
     def read_patch_names(self):
-        """{patch_number: name} for all nine stored patches."""
+        """{channel: name} for all nine stored channels, e.g. {"a1": "kill em"}."""
         return {
-            patch: decode_name(self.read_patch(patch, 0x00, NAME_LENGTH))
-            for patch in range(1, 10)
+            channel: decode_name(self.read_patch(patch, 0x00, NAME_LENGTH))
+            for channel, patch in STORED_PATCH.items()
         }
 
     def read_channel(self):
         """The channel the amp is on: "a1".."a4", "panel" or "b1".."b4".
 
-        None if the amp reports a program that is not one of CHANNELS.
+        None if the amp reports a number outside STORED_PATCH.
         """
         high, low = self.read(self._encode_address(CURRENT_CHANNEL), 2, attempts=1)
-        program = high * 128 + low + 1
-        return next((name for name, pc in CHANNELS.items() if pc == program), None)
+        patch = high * 128 + low + 1
+        return next((channel for channel, number in STORED_PATCH.items() if number == patch), None)
 
     def send_control_change(self, control, value):
         """Send a raw Control Change on the amp's receive channel."""

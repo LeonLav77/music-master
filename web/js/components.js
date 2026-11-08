@@ -370,6 +370,8 @@ export function channelRail() {
     _timer: null,
 
     holdStart(id) {
+      // PANEL is the live knobs, not a stored sound: nothing to overwrite.
+      if (id === "panel") return;
       this._timer = setTimeout(() => { this.pending = id; }, 650);
     },
     holdEnd() {

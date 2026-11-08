@@ -129,14 +129,21 @@ what the official manual documents:
 amp.select_channel("a1")        # BANK A CH1
 amp.select_channel("panel")     # the panel knobs
 amp.read_channel()              # 'panel' - which one the amp is on
-amp.read_patch_names()          # {1: 'KATANA Mk2', 2: 'kill em', ...}
-amp.copy_live_to_patch(3)       # copy the whole live sound into patch 3
+amp.read_patch_names()          # {'panel': 'KATANA Mk2', 'a1': 'kill em', ...}
+amp.copy_live_to_patch(STORED_PATCH["a2"])   # copy the whole live sound into A2
 ```
 
 Programs: `a1`–`a4` = PC 1–4, `panel` = PC 5, `b1`–`b4` = PC 6–9.
 
-The amp keeps the channel it is on at `00 01 00 00`, as a two-byte program
-number counted from 0 (B2 reads `[0, 6]`). The server reads it with every
+**Stored patches are numbered differently.** In memory PANEL comes first:
+patch 1 = PANEL, 2–5 = A1–A4, 6–9 = B1–B4 (`katana.STORED_PATCH`, Roland's
+order, as in BOSS Tone Studio's patch list). Only the B bank matches its
+Program Change numbers. Mixing the two up once made A-bank names show one
+channel off, and made "save to A1" write into the PANEL slot.
+
+The amp keeps the channel it is on at `00 01 00 00`, as a two-byte number
+counted from 0 in the stored-patch order above (B2 reads `[0, 6]`, A1
+`[0, 1]`, PANEL `[0, 0]`). The server reads it with every
 refresh, so the UI shows the real channel. The amp does **not** announce
 channel changes made with its own CH buttons; press Resync to pick those up.
 
@@ -337,7 +344,7 @@ address instead of localhost). Interactive API docs at `/docs`.
 | `GET /api/tsl` | Patch files in `patches/` |
 | `POST /api/tsl/{file}/{index}` | Load one patch into the amp |
 | `POST /api/refresh` | Re-read the amp (after someone turns a knob) |
-| `POST /api/patch/{number}` | Save the live sound into a stored channel |
+| `POST /api/patch/{channel}` | Save the live sound into a stored channel (`a1`–`b4`; not `panel`) |
 | `POST /api/cc/{control}` | Send a raw Control Change, as a footswitch would |
 | `WS /ws` | Live changes both ways: knob values and channel switches in, state pushes out |
 
