@@ -14,6 +14,7 @@ slow in there and the card drops audio.
 """
 
 import queue
+import time
 
 import sounddevice
 
@@ -44,6 +45,8 @@ def find_input(name=KATANA_NAME):
 class Capture:
     def __init__(self, device=None):
         self.overruns = 0     # blocks the card dropped because we were late
+        self.last_block = None  # time.monotonic() of the newest block, None before the first
+        self._started = time.monotonic()
         self._listeners = []
 
         try:
@@ -78,6 +81,17 @@ class Capture:
         being handed over: the card's buffer."""
         return self._stream.latency
 
+    def silent_for(self):
+        """Seconds since the card last handed over a block (or since the
+        stream opened, if none came yet).
+
+        The Katana sends blocks nonstop, silence included, so anything
+        past a fraction of a second means the stream has stalled: the amp
+        can keep its USB link up while sending only empty packets, and
+        then the card simply stops handing blocks over - no error.
+        """
+        return time.monotonic() - (self._started if self.last_block is None else self.last_block)
+
     # --- listeners: safe from any thread -----------------------------------
 
     def listen(self):
@@ -95,6 +109,7 @@ class Capture:
     # --- the audio thread --------------------------------------------------
 
     def _receive(self, data, frames, timing, status):
+        self.last_block = time.monotonic()
         if status.input_overflow:
             self.overruns += 1
         # The card reuses `data` for the next block, so each listener

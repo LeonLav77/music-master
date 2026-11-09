@@ -17,6 +17,15 @@ Reopening the jack cuts off a song or the metronome. That only happens
 when the amp is switched on or off - and the jack plays into the amp's
 AUX, so with the amp off nobody hears it anyway. The metronome keeps its
 tempo and volume.
+
+The Katana's input can also stall with the amp on: the card stays
+listed, MIDI keeps working, but the amp sends only empty USB packets, so
+no audio arrives - the tuner freezes on its last note and the recorder
+records nothing, with no error anywhere. Reopening restarts the amp's
+audio and fixes it, so that is done here too, when no audio has come for
+STALL seconds. If it stalls again straight away the wait doubles each
+time, up to STALL_MAX, so a stall reopening cannot fix does not cut off
+the metronome every few seconds.
 """
 
 import asyncio
@@ -32,6 +41,8 @@ from server import audio, recorder, tuner
 CARDS = Path("/proc/asound/cards")
 CHECK_INTERVAL = 2.0     # seconds between looks at the list of cards
 SETTLE = 1.0             # seconds a Katana that just appeared gets to be ready
+STALL = 3.0              # seconds without audio before the input counts as stalled
+STALL_MAX = 60.0         # the longest the wait grows to after repeated stalls
 
 log = logging.getLogger("uvicorn.error")
 
@@ -70,14 +81,22 @@ async def _watch():
     # before this first look, the input failed to open although the card
     # is there - and this way that counts as a change too.
     was_plugged = tuner.capture is not None
+    stall_limit = STALL
     while True:
         plugged = _plugged()
+        capture = tuner.capture
         if plugged != was_plugged:
             was_plugged = plugged
             log.info("Amp %s: reopening the sound cards", "on" if plugged else "off")
             if plugged:
                 await asyncio.sleep(SETTLE)
             await _reopen()
+        elif capture is not None and capture.silent_for() > stall_limit:
+            log.warning("Amp input stalled: no audio for %.0f s, reopening the sound cards", stall_limit)
+            await _reopen()
+            stall_limit = min(stall_limit * 2, STALL_MAX)
+        elif capture is not None and capture.last_block is not None and capture.silent_for() < 1.0:
+            stall_limit = STALL      # audio is arriving again: back to the short wait
         await asyncio.sleep(CHECK_INTERVAL)
 
 

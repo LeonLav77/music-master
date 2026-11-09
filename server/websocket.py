@@ -30,19 +30,21 @@ TAPS = {"delay_tap": Param.DELAY_TIME, "delay2_tap": Param.DELAY2_TIME}
 # than guess how long, poll the start of the live patch (name, boost, amp)
 # until it matches the stored copy of the new channel, then read.
 # CHANNEL_SETTLE is the fallback when that cannot tell: PANEL (the live
-# knobs, no stored copy), two identical channels, or nothing read yet -
-# 0.5 s is what BOSS Tone Studio's own code waited.
+# knobs, no stored copy), nothing read yet, or the live sound already
+# looking like the target before the switch (two identical channels) -
+# then a match would prove nothing. 0.5 s is what BOSS Tone Studio's own
+# code waited.
 CHANNEL_SETTLE = 0.5
 CHANNEL_POLL = 0.05      # seconds between name checks
 CHANNEL_MARGIN = 0.1     # after the name matches, in case the name lands first
 CHANNEL_TIMEOUT = 2.0    # give up waiting for the name and read anyway
 
 
-async def _wait_until_loaded(channel):
-    """Wait until the amp has loaded `channel` ("b2"). Returns how it knew."""
+async def _wait_until_loaded(channel, before):
+    """Wait until the amp has loaded `channel` ("b2"). `before` is the live
+    fingerprint from just before the switch. Returns how it knew."""
     target = amp.patch_fingerprints.get(channel)
-    stored = list(amp.patch_fingerprints.values())
-    if channel == "panel" or not target or stored.count(target) != 1:
+    if channel == "panel" or not target or before is None or before == target:
         await asyncio.sleep(CHANNEL_SETTLE)
         return "fixed wait"
     deadline = time.monotonic() + CHANNEL_TIMEOUT
@@ -132,12 +134,14 @@ async def _select_channel(name):
         current = await amp.call(Katana.read_channel, read=True)
         if current == name:
             detour = "a2" if name != "a2" else "a1"
+            before = await amp.call(amp.live_fingerprint)
             await amp.call(Katana.select_channel, detour)
-            await _wait_until_loaded(detour)
+            await _wait_until_loaded(detour, before)
 
+        before = await amp.call(amp.live_fingerprint)
         started = time.monotonic()
         await amp.call(Katana.select_channel, name)
-        how = await _wait_until_loaded(name)
+        how = await _wait_until_loaded(name, before)
         loaded = time.monotonic()
         # Amp-wide settings do not change with the channel; skip them.
         values = await amp.call(amp.refresh, False, read=True)
